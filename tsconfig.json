@@ -1,0 +1,54 @@
+{
+    "compilerOptions": {
+        "target": "ES2022",
+        "lib": [
+            "ES2022",
+            "DOM",
+            "DOM.Iterable"
+        ],
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "noEmit": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "jsx": "react-jsx",
+        "declaration": true,
+        "declarationMap": true,
+        "allowJs": true,
+        "checkJs": false,
+        "sourceMap": true,
+        "baseUrl": ".",
+        "paths": {
+            "@/*": [
+                "src/*"
+            ],
+            "@wallets/*": [
+                "src/wallets/*"
+            ],
+            "@services/*": [
+                "src/services/*"
+            ],
+            "@network/*": [
+                "src/network/*"
+            ],
+            "@crypto/*": [
+                "src/crypto/*"
+            ],
+            "@types/*": [
+                "src/types/*"
+            ]
+        }
+    },
+    "include": [
+        "src/**/*",
+        "tests/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}

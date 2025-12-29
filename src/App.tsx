@@ -1,0 +1,346 @@
+import React, { useState } from 'react';
+import { useWallet } from './context/WalletContext';
+import LoginScreen from './components/LoginScreen';
+import WalletHeader from './components/WalletHeader';
+import BottomNavigation from './components/BottomNavigation';
+import HomeTab from './components/HomeTab';
+import ActivityTab from './components/ActivityTab';
+import SettingsTab from './components/SettingsTab';
+import { SendModal, ReceiveModal, BuyModal, BackupModal, PhraseModal, TransactionModal, PasswordPromptModal, SelectWalletTypeModal, TokenDetailsModal, PrivateKeyModal } from './components/WalletModals';
+import { AccountsModal, AddAccountModal } from './components/AccountModals';
+
+export default function TonWallet() {
+    // Context State
+    const { isLoggedIn, balance, transactions, walletAddress, sendTransaction, logout, isLoading, walletType, getDecryptedSeed, getPrivateKey, switchWalletType, tokens, totalBalanceUSDT, accounts, activeAccount, selectAccount, addAccount, renameAccount, deleteAccount } = useWallet();
+
+    // UI State
+    const [activeTab, setActiveTab] = useState('home');
+    const [copied, setCopied] = useState(false);
+    const [showSendModal, setShowSendModal] = useState(false);
+    const [showReceiveModal, setShowReceiveModal] = useState(false);
+    const [showBuyModal, setShowBuyModal] = useState(false);
+    const [activityFilter, setActivityFilter] = useState('all');
+    const [darkMode, setDarkMode] = useState(false);
+    const [notifications, setNotifications] = useState(true);
+    const [language, setLanguage] = useState('ar');
+    const [showBackupModal, setShowBackupModal] = useState(false);
+    const [showPhraseModal, setShowPhraseModal] = useState(false);
+    const [copiedPhrase, setCopiedPhrase] = useState(false);
+    const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+
+    // Transaction & Security Flow State
+    const [showPasswordModal, setShowPasswordModal] = useState(false);
+    const [passwordAction, setPasswordAction] = useState<'transaction' | 'viewSeed' | 'switchType' | 'viewPrivateKey' | null>(null);
+    const [pendingTx, setPendingTx] = useState<{ recipient: string; amount: string; comment?: string } | null>(null);
+    const [txError, setTxError] = useState('');
+    const [decryptedSeed, setDecryptedSeed] = useState<string[]>([]);
+    const [isSeedLoading, setIsSeedLoading] = useState(false);
+
+    // Accounts
+    const [showAccountsModal, setShowAccountsModal] = useState(false);
+    const [showAddAccountModal, setShowAddAccountModal] = useState(false);
+
+    const [showWalletTypeModal, setShowWalletTypeModal] = useState(false);
+    const [pendingWalletType, setPendingWalletType] = useState('');
+
+    // Token Details
+    const [selectedToken, setSelectedToken] = useState<any>(null);
+    const [showTokenModal, setShowTokenModal] = useState(false);
+    const [showPrivateKeyModal, setShowPrivateKeyModal] = useState(false);
+    const [privateKey, setPrivateKey] = useState('');
+
+    const handleCopy = () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleCopyPhrase = () => {
+        setCopiedPhrase(true);
+        setTimeout(() => setCopiedPhrase(false), 2000);
+    };
+
+    // Send Logic
+    const handleSendInitiated = (to: string, amt: string, comment?: string, token?: any) => {
+        // We can ignore token for now or pass it to pendingTx if we want to handle jettons later in context
+        setPendingTx({ recipient: to, amount: amt, comment: comment });
+        setShowSendModal(false);
+        setPasswordAction('transaction');
+        setShowPasswordModal(true);
+    };
+
+    // Wallet Type Logic
+    const handleWalletTypeSelect = (type: string) => {
+        if (type === walletType) {
+            setShowWalletTypeModal(false);
+            return;
+        }
+        setPendingWalletType(type);
+        setShowWalletTypeModal(false);
+        setPasswordAction('switchType');
+        setShowPasswordModal(true);
+    };
+
+    // View Seed Logic
+    const handleViewSeedInitiated = () => {
+        setDecryptedSeed([]);
+        setPasswordAction('viewSeed');
+        setShowPasswordModal(true);
+    };
+
+    const handleViewPrivateKeyInitiated = () => {
+        setPrivateKey('');
+        setPasswordAction('viewPrivateKey');
+        setShowPasswordModal(true);
+    };
+
+    const handlePasswordConfirm = async (password: string) => {
+        setTxError('');
+
+        if (passwordAction === 'transaction') {
+            if (!pendingTx) return;
+            try {
+                await sendTransaction(pendingTx.recipient, pendingTx.amount, password, pendingTx.comment);
+                setShowPasswordModal(false);
+                setPendingTx(null);
+                setPasswordAction(null);
+                alert('Transaction Sent!');
+            } catch (e: any) {
+                setTxError(e.message || 'Transaction failed');
+            }
+        } else if (passwordAction === 'viewSeed') {
+            setIsSeedLoading(true);
+            try {
+                const seed = await getDecryptedSeed(password);
+                setDecryptedSeed(seed);
+                setShowPasswordModal(false);
+                setPasswordAction(null);
+                setShowPhraseModal(true);
+            } catch (e: any) {
+                // If invalid password, keep modal open and show error
+                setTxError(e.message || 'Invalid password');
+                // Do NOT close modal
+            } finally {
+                setIsSeedLoading(false);
+            }
+        } else if (passwordAction === 'viewPrivateKey') {
+            setIsSeedLoading(true);
+            try {
+                const pk = await getPrivateKey(password);
+                setPrivateKey(pk);
+                setShowPasswordModal(false);
+                setPasswordAction(null);
+                setShowPrivateKeyModal(true);
+            } catch (e: any) {
+                setTxError(e.message || 'Invalid password');
+            } finally {
+                setIsSeedLoading(false);
+            }
+        } else if (passwordAction === 'switchType') {
+            setIsSeedLoading(true); // Reuse loading state
+            try {
+                await switchWalletType(pendingWalletType, password);
+                setShowPasswordModal(false);
+                setPasswordAction(null);
+                alert(`Switched to ${pendingWalletType}`);
+            } catch (e: any) {
+                setTxError(e.message || 'Failed to switch wallet type');
+            } finally {
+                setIsSeedLoading(false);
+            }
+        }
+    };
+
+
+
+    if (!isLoggedIn) {
+        return <LoginScreen darkMode={darkMode} />;
+    }
+
+    return (
+        <div className={`min-h-screen ${darkMode ? 'bg-black' : 'bg-gradient-to-br from-blue-50 to-indigo-50'} p-4 flex items-center justify-center`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            <div className={`w-full max-w-md ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[85vh] relative`}>
+
+                <WalletHeader
+                    darkMode={darkMode}
+                    language={language}
+                    walletType={walletType}
+                    activeTab={activeTab}
+                    totalBalance={totalBalanceUSDT}
+                    walletAddress={walletAddress || ''}
+                    copied={copied}
+                    handleCopy={handleCopy}
+                    accountName={activeAccount?.name || 'My Wallet'}
+                    onAccountsClick={() => setShowAccountsModal(true)}
+                />
+
+                <div className="flex-1 overflow-y-auto no-scrollbar relative pb-10">
+                    {activeTab === 'home' && (
+                        <HomeTab
+                            darkMode={darkMode}
+                            language={language}
+                            setShowSendModal={setShowSendModal}
+                            setShowReceiveModal={setShowReceiveModal}
+                            setShowBuyModal={setShowBuyModal}
+                            tokens={tokens}
+                            onTokenClick={(token) => {
+                                setSelectedToken(token);
+                                setShowTokenModal(true);
+                            }}
+                        />
+                    )}
+
+                    {activeTab === 'activity' && (
+                        <ActivityTab
+                            darkMode={darkMode}
+                            language={language}
+                            activityFilter={activityFilter}
+                            setActivityFilter={setActivityFilter}
+                            activities={transactions}
+                            setSelectedTransaction={setSelectedTransaction}
+                        />
+                    )}
+
+                    {activeTab === 'settings' && (
+                        <SettingsTab
+                            darkMode={darkMode}
+                            setDarkMode={setDarkMode}
+                            language={language}
+                            setLanguage={setLanguage}
+                            walletType={walletType}
+                            notifications={notifications}
+                            setNotifications={setNotifications}
+                            setShowBackupModal={setShowBackupModal}
+                            setShowPhraseModal={handleViewSeedInitiated}
+                            onLogout={() => {
+                                logout();
+                                setActiveTab('home');
+                            }}
+                            onWalletTypeClick={() => setShowWalletTypeModal(true)}
+                        />
+                    )}
+                </div>
+
+                <BottomNavigation
+                    darkMode={darkMode}
+                    activeTab={activeTab}
+                    setActiveTab={setActiveTab}
+                    language={language}
+                />
+
+                <SendModal
+                    isOpen={showSendModal}
+                    onClose={() => setShowSendModal(false)}
+                    darkMode={darkMode}
+                    language={language}
+                    onSend={handleSendInitiated}
+                    tokens={tokens}
+                    walletAddress={walletAddress || ''}
+                />
+                <ReceiveModal
+                    isOpen={showReceiveModal}
+                    onClose={() => setShowReceiveModal(false)}
+                    darkMode={darkMode}
+                    language={language}
+                    walletAddress={walletAddress || ''}
+                    handleCopy={handleCopy}
+                    copied={copied}
+                />
+                <BuyModal
+                    isOpen={showBuyModal}
+                    onClose={() => setShowBuyModal(false)}
+                    darkMode={darkMode}
+                    language={language}
+                />
+                <BackupModal
+                    isOpen={showBackupModal}
+                    onClose={() => setShowBackupModal(false)}
+                    darkMode={darkMode}
+                    language={language}
+                    onShowPhrase={() => {
+                        setShowBackupModal(false);
+                        handleViewSeedInitiated();
+                    }}
+                    onShowPrivateKey={() => {
+                        setShowBackupModal(false);
+                        handleViewPrivateKeyInitiated();
+                    }}
+                />
+                <PhraseModal
+                    isOpen={showPhraseModal}
+                    onClose={() => setShowPhraseModal(false)}
+                    darkMode={darkMode}
+                    language={language}
+                    seedPhrase={decryptedSeed.length > 0 ? decryptedSeed : ["Loading..."]}
+                    handleCopyPhrase={handleCopyPhrase}
+                    copiedPhrase={copiedPhrase}
+                />
+                <TransactionModal
+                    transaction={selectedTransaction}
+                    onClose={() => setSelectedTransaction(null)}
+                    darkMode={darkMode}
+                    language={language}
+                />
+                <PrivateKeyModal
+                    isOpen={showPrivateKeyModal}
+                    onClose={() => setShowPrivateKeyModal(false)}
+                    darkMode={darkMode}
+                    language={language}
+                    privateKey={privateKey}
+                />
+                <PasswordPromptModal
+                    isOpen={showPasswordModal}
+                    onClose={() => setShowPasswordModal(false)}
+                    error={txError}
+                    onConfirm={handlePasswordConfirm}
+                    darkMode={darkMode}
+                    language={language}
+                    isLoading={isLoading || isSeedLoading}
+                />
+                <SelectWalletTypeModal
+                    isOpen={showWalletTypeModal}
+                    onClose={() => setShowWalletTypeModal(false)}
+                    currentType={walletType}
+                    onSelect={handleWalletTypeSelect}
+                    darkMode={darkMode}
+                    language={language}
+                />
+                <TokenDetailsModal
+                    isOpen={showTokenModal}
+                    onClose={() => setShowTokenModal(false)}
+                    token={selectedToken}
+                    transactions={transactions}
+                    darkMode={darkMode}
+                    language={language}
+                />
+                {/* Account Modals */}
+                <AccountsModal
+                    isOpen={showAccountsModal}
+                    onClose={() => setShowAccountsModal(false)}
+                    accounts={accounts}
+                    activeAccount={activeAccount}
+                    onSelectAccount={(id) => {
+                        selectAccount(id);
+                        setShowAccountsModal(false);
+                    }}
+                    onAddAccount={() => {
+                        setShowAccountsModal(false);
+                        setShowAddAccountModal(true);
+                    }}
+                    onDeleteAccount={deleteAccount}
+                    onRenameAccount={renameAccount}
+                    darkMode={darkMode}
+                    language={language}
+                />
+                <AddAccountModal
+                    isOpen={showAddAccountModal}
+                    onClose={() => setShowAddAccountModal(false)}
+                    onAdd={async (name, password, mnemonic) => {
+                        await addAccount(name, mnemonic || [], password);
+                    }}
+                    darkMode={darkMode}
+                    language={language}
+                />
+            </div>
+        </div>
+    );
+}
