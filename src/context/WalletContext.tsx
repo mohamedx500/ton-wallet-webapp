@@ -6,6 +6,8 @@ import { SecurityService } from '../services/SecurityService';
 // @ts-ignore
 import { TonApiService } from '../services/TonApiService';
 import { AccountManager, WalletAccount } from '../services/AccountManager';
+// @ts-ignore
+import { networkService, ConnectionQuality } from '../services/NetworkService';
 
 interface WalletContextType {
     isLoggedIn: boolean;
@@ -104,7 +106,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             // Send
             const res = await walletService.sendTransaction(mnemonic, activeAccount.type, recipient, amount, comment || '');
 
-            setTimeout(refreshData, 5000);
+            // Refresh balance multiple times to catch confirmation
+            setTimeout(refreshData, 3000);  // After 3 seconds
+            setTimeout(refreshData, 10000); // After 10 seconds
+            setTimeout(refreshData, 20000); // After 20 seconds
             return res;
         } catch (e) {
             throw e;
@@ -113,8 +118,28 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    // Track last refresh to debounce
+    const [lastRefresh, setLastRefresh] = useState<number>(0);
+    const REFRESH_COOLDOWN = 5000; // 5 second cooldown between refreshes
+
     const refreshData = async () => {
         if (!walletAddress) return;
+
+        // Check network status before refreshing
+        const networkStatus = networkService.getStatus();
+        if (networkStatus.quality === ConnectionQuality.OFFLINE || !networkStatus.isOnline) {
+            console.log('[WalletContext] Refresh skipped - offline');
+            return;
+        }
+
+        // Debounce: Prevent refreshing too frequently
+        const now = Date.now();
+        if (now - lastRefresh < REFRESH_COOLDOWN) {
+            console.log('[WalletContext] Refresh skipped - cooldown active');
+            return;
+        }
+        setLastRefresh(now);
+
         try {
             // 1. Get Rates
             const rates = await tonApiService.getRates();
@@ -188,26 +213,69 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
             // 5. Get Transactions
             const txs = await tonApiService.getTransactions(walletAddress);
-            const formattedTxs = txs.map((tx: any) => ({
-                ...tx,
-                type: tx.type || (tx.in_msg?.destination === walletAddress ? 'received' : 'sent'),
-                amount: tx.amount || (tx.in_msg?.value ? (tx.in_msg.value / 1e9).toFixed(2) : '0.00'),
-                token: tx.token || 'TON',
-                time: tx.time || new Date(tx.utime * 1000).toLocaleString(),
-                status: 'completed'
-            }));
+            const formattedTxs = txs.map((tx: any) => {
+                // Convert 'incoming'/'outgoing' to 'received'/'sent'
+                let type = 'sent';
+                if (tx.type === 'incoming') {
+                    type = 'received';
+                } else if (tx.type === 'outgoing') {
+                    type = 'sent';
+                }
+
+                // Convert nanoTON to TON (divide by 1e9)
+                const amountInTon = tx.amount ? (tx.amount / 1e9) : 0;
+                const formattedAmount = amountInTon.toFixed(amountInTon < 0.01 ? 4 : 2);
+
+                // Parse timestamp (API returns Unix timestamp in seconds)
+                let timeString = 'Unknown';
+                if (tx.timestamp) {
+                    try {
+                        const date = new Date(tx.timestamp * 1000);
+                        if (!isNaN(date.getTime())) {
+                            timeString = date.toLocaleString();
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse timestamp:', tx.timestamp);
+                    }
+                }
+
+                return {
+                    ...tx,
+                    type,
+                    amount: formattedAmount,
+                    token: tx.jetton || 'TON',
+                    time: timeString,
+                    from: type === 'received' ? tx.from : tx.to,
+                    to: type === 'sent' ? tx.to : tx.from,
+                    status: 'completed'
+                };
+            });
 
             setTxs(formattedTxs);
-        } catch (e) {
-            console.error(e);
+        } catch (e: any) {
+            // Check if this is a network-related error
+            const errorMessage = e?.message?.toLowerCase() || '';
+            const isNetworkError = errorMessage.includes('network') ||
+                errorMessage.includes('fetch') ||
+                errorMessage.includes('timeout') ||
+                errorMessage.includes('connection') ||
+                errorMessage.includes('offline');
+
+            if (isNetworkError || networkService.isWeak()) {
+                console.warn('[WalletContext] Refresh failed due to network issues:', e?.message);
+                // Trigger network status check
+                networkService.checkNow();
+            } else {
+                console.error('[WalletContext] Refresh failed:', e);
+            }
         }
     };
 
-    // Periodical Refresh
+    // Periodical Refresh - 60 second interval to avoid rate limiting (429 errors)
     useEffect(() => {
         if (isLoggedIn && walletAddress) {
             refreshData();
-            const interval = setInterval(refreshData, 10000);
+            const interval = setInterval(refreshData, 60000); // 60 seconds to avoid rate limits
             return () => clearInterval(interval);
         }
     }, [isLoggedIn, walletAddress]);

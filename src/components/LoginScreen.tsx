@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Wallet, Shield, ArrowRight, Eye, EyeOff, Copy, Check, Loader2, ChevronLeft, Import } from 'lucide-react';
 import { useWallet } from '../context/WalletContext';
 import { mnemonicNew } from '@ton/crypto';
+import NetworkBanner from './NetworkBanner';
 
 interface LoginScreenProps {
     darkMode: boolean;
@@ -110,6 +111,7 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
     if (view === 'unlock') {
         return (
             <div className={`min-h-screen ${darkMode ? 'bg-black text-white' : 'bg-gradient-to-br from-blue-50 to-indigo-50 text-gray-800'} flex items-center justify-center p-4`} dir="ltr">
+                <NetworkBanner darkMode={darkMode} />
                 <div className={`w-full max-w-md ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-3xl shadow-2xl p-8 text-center`}>
                     <Logo />
                     <h2 className="text-2xl font-bold mb-2">Welcome Back</h2>
@@ -158,6 +160,7 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
     if (view === 'mnemonic_input') {
         return (
             <div className={`min-h-screen ${darkMode ? 'bg-black text-white' : 'bg-gradient-to-br from-blue-50 to-indigo-50 text-gray-800'} flex items-center justify-center p-4`} dir="ltr">
+                <NetworkBanner darkMode={darkMode} />
                 <div className={`w-full max-w-md ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-3xl shadow-2xl p-8`}>
                     <button onClick={() => setView('initial')} className="mb-4 text-gray-500 hover:text-gray-700"><ChevronLeft /></button>
                     <h2 className="text-2xl font-bold mb-2">Import Wallet</h2>
@@ -180,6 +183,7 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
     if (view === 'password_setup') {
         return (
             <div className={`min-h-screen ${darkMode ? 'bg-black text-white' : 'bg-gradient-to-br from-blue-50 to-indigo-50 text-gray-800'} flex items-center justify-center p-4`} dir="ltr">
+                <NetworkBanner darkMode={darkMode} />
                 <div className={`w-full max-w-md ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-3xl shadow-2xl p-8`}>
                     <button onClick={() => setView(isImportFlow ? 'mnemonic_input' : 'initial')} className="mb-4 text-gray-500 hover:text-gray-700"><ChevronLeft /></button>
                     <h2 className="text-2xl font-bold mb-2 text-center">Set Password</h2>
@@ -217,6 +221,7 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
     if (view === 'mnemonic_show') {
         return (
             <div className={`min-h-screen ${darkMode ? 'bg-black text-white' : 'bg-gradient-to-br from-blue-50 to-indigo-50 text-gray-800'} flex items-center justify-center p-4`} dir="ltr">
+                <NetworkBanner darkMode={darkMode} />
                 <div className={`w-full max-w-md ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-3xl shadow-2xl p-6`}>
                     <h2 className="text-xl font-bold mb-2 text-center text-red-500">Secret Recovery Phrase</h2>
                     <p className="text-sm text-gray-500 mb-4 text-center">Write these words down. We cannot recover them for you.</p>
@@ -245,6 +250,7 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
 
     return (
         <div className={`min-h-screen ${darkMode ? 'bg-black text-white' : 'bg-gradient-to-br from-blue-50 to-indigo-50 text-gray-800'} flex items-center justify-center p-4`} dir="ltr">
+            <NetworkBanner darkMode={darkMode} />
             <div className={`w-full max-w-md ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-3xl shadow-2xl p-8 text-center`}>
                 <Logo />
                 <h1 className="text-3xl font-bold mb-2">TON Wallet</h1>

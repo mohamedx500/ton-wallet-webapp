@@ -6,8 +6,10 @@ import BottomNavigation from './components/BottomNavigation';
 import HomeTab from './components/HomeTab';
 import ActivityTab from './components/ActivityTab';
 import SettingsTab from './components/SettingsTab';
-import { SendModal, ReceiveModal, BuyModal, BackupModal, PhraseModal, TransactionModal, PasswordPromptModal, SelectWalletTypeModal, TokenDetailsModal, PrivateKeyModal } from './components/WalletModals';
+import { SendModal, ReceiveModal, BuyModal, BackupModal, PhraseModal, TransactionModal, PasswordPromptModal, SelectWalletTypeModal, TokenDetailsModal, PrivateKeyModal, SwapModal } from './components/WalletModals';
 import { AccountsModal, AddAccountModal } from './components/AccountModals';
+import NetworkBanner from './components/NetworkBanner';
+
 
 export default function TonWallet() {
     // Context State
@@ -19,10 +21,11 @@ export default function TonWallet() {
     const [showSendModal, setShowSendModal] = useState(false);
     const [showReceiveModal, setShowReceiveModal] = useState(false);
     const [showBuyModal, setShowBuyModal] = useState(false);
+    const [showSwapModal, setShowSwapModal] = useState(false);
     const [activityFilter, setActivityFilter] = useState('all');
     const [darkMode, setDarkMode] = useState(false);
     const [notifications, setNotifications] = useState(true);
-    const [language, setLanguage] = useState('ar');
+    const [language, setLanguage] = useState('en');
     const [showBackupModal, setShowBackupModal] = useState(false);
     const [showPhraseModal, setShowPhraseModal] = useState(false);
     const [copiedPhrase, setCopiedPhrase] = useState(false);
@@ -30,8 +33,9 @@ export default function TonWallet() {
 
     // Transaction & Security Flow State
     const [showPasswordModal, setShowPasswordModal] = useState(false);
-    const [passwordAction, setPasswordAction] = useState<'transaction' | 'viewSeed' | 'switchType' | 'viewPrivateKey' | null>(null);
+    const [passwordAction, setPasswordAction] = useState<'transaction' | 'viewSeed' | 'switchType' | 'viewPrivateKey' | 'swap' | null>(null);
     const [pendingTx, setPendingTx] = useState<{ recipient: string; amount: string; comment?: string } | null>(null);
+    const [pendingSwap, setPendingSwap] = useState<{ fromToken: string; toToken: string; amount: string; minOutput: string; provider: string; quote: any } | null>(null);
     const [txError, setTxError] = useState('');
     const [decryptedSeed, setDecryptedSeed] = useState<string[]>([]);
     const [isSeedLoading, setIsSeedLoading] = useState(false);
@@ -50,11 +54,19 @@ export default function TonWallet() {
     const [privateKey, setPrivateKey] = useState('');
 
     const handleCopy = () => {
+        // Actually copy the wallet address to clipboard
+        if (walletAddress) {
+            navigator.clipboard.writeText(walletAddress);
+        }
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
 
     const handleCopyPhrase = () => {
+        // Actually copy the seed phrase to clipboard
+        if (decryptedSeed.length > 0) {
+            navigator.clipboard.writeText(decryptedSeed.join(' '));
+        }
         setCopiedPhrase(true);
         setTimeout(() => setCopiedPhrase(false), 2000);
     };
@@ -65,6 +77,14 @@ export default function TonWallet() {
         setPendingTx({ recipient: to, amount: amt, comment: comment });
         setShowSendModal(false);
         setPasswordAction('transaction');
+        setShowPasswordModal(true);
+    };
+
+    // Swap Logic
+    const handleSwapInitiated = (swapData: any) => {
+        setPendingSwap(swapData);
+        setShowSwapModal(false);
+        setPasswordAction('swap');
         setShowPasswordModal(true);
     };
 
@@ -147,6 +167,70 @@ export default function TonWallet() {
             } finally {
                 setIsSeedLoading(false);
             }
+        } else if (passwordAction === 'swap') {
+            if (!pendingSwap) return;
+            setIsSeedLoading(true);
+            try {
+                // Import swapService
+                const { swapService } = await import('./services/SwapService.js');
+
+                // Build swap transaction
+                let swapTx: any;
+                if (pendingSwap.provider === 'stonfi') {
+                    swapTx = await swapService.buildStonfiSwapTransaction(
+                        walletAddress,
+                        pendingSwap.fromToken,
+                        pendingSwap.toToken,
+                        pendingSwap.amount,
+                        pendingSwap.minOutput
+                    );
+                } else {
+                    swapTx = await swapService.buildDedustSwapTransaction(
+                        walletAddress,
+                        pendingSwap.fromToken,
+                        pendingSwap.toToken,
+                        pendingSwap.amount,
+                        pendingSwap.minOutput,
+                        pendingSwap.quote?.poolAddress
+                    );
+                }
+
+                // Execute the swap
+                if (swapTx && swapTx.type === 'jetton_transfer') {
+                    // For Jetton swaps, we need to use sendJettonTransfer
+                    // This is more complex - for now show info
+                    const swapInfo = `${pendingSwap.amount} ${pendingSwap.fromToken} → ${pendingSwap.quote.outputAmount} ${pendingSwap.toToken}`;
+                    alert(`Jetton-to-Jetton/TON swaps require additional implementation.\n\n${swapInfo}\nProvider: ${pendingSwap.provider === 'stonfi' ? 'STON.fi' : 'DeDust'}`);
+                } else if (swapTx && swapTx.to && swapTx.value) {
+                    // TON -> Jetton swap - send TON to router
+                    // Convert nanoTON string to TON with proper decimal handling
+                    const valueInNano = BigInt(swapTx.value);
+                    const wholeTon = valueInNano / BigInt(1e9);
+                    const remainder = valueInNano % BigInt(1e9);
+                    const decimalPart = remainder.toString().padStart(9, '0');
+                    const amountInTon = `${wholeTon}.${decimalPart}`.replace(/\.?0+$/, '') || '0';
+
+                    console.log('Swap transaction:', { to: swapTx.to, value: swapTx.value, amountInTon });
+
+                    if (parseFloat(amountInTon) <= 0) {
+                        throw new Error('Invalid swap amount');
+                    }
+
+                    await sendTransaction(swapTx.to, amountInTon, password, '');
+
+                    alert(`Swap initiated!\n\n${pendingSwap.amount} ${pendingSwap.fromToken} → ${pendingSwap.quote.outputAmount} ${pendingSwap.toToken}\n\nPlease check your transaction history in a few minutes.`);
+                } else {
+                    throw new Error('Failed to build swap transaction');
+                }
+
+                setShowPasswordModal(false);
+                setPendingSwap(null);
+                setPasswordAction(null);
+            } catch (e: any) {
+                setTxError(e.message || 'Swap failed');
+            } finally {
+                setIsSeedLoading(false);
+            }
         }
     };
 
@@ -158,6 +242,9 @@ export default function TonWallet() {
 
     return (
         <div className={`min-h-screen ${darkMode ? 'bg-black' : 'bg-gradient-to-br from-blue-50 to-indigo-50'} p-4 flex items-center justify-center`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            {/* Network Status Banner */}
+            <NetworkBanner darkMode={darkMode} />
+
             <div className={`w-full max-w-md ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[85vh] relative`}>
 
                 <WalletHeader
@@ -181,6 +268,7 @@ export default function TonWallet() {
                             setShowSendModal={setShowSendModal}
                             setShowReceiveModal={setShowReceiveModal}
                             setShowBuyModal={setShowBuyModal}
+                            setShowSwapModal={setShowSwapModal}
                             tokens={tokens}
                             onTokenClick={(token) => {
                                 setSelectedToken(token);
@@ -250,6 +338,16 @@ export default function TonWallet() {
                     onClose={() => setShowBuyModal(false)}
                     darkMode={darkMode}
                     language={language}
+                    walletAddress={walletAddress || ''}
+                />
+                <SwapModal
+                    isOpen={showSwapModal}
+                    onClose={() => setShowSwapModal(false)}
+                    darkMode={darkMode}
+                    language={language}
+                    walletAddress={walletAddress || ''}
+                    tokens={tokens}
+                    onSwapInitiated={handleSwapInitiated}
                 />
                 <BackupModal
                     isOpen={showBackupModal}
@@ -311,6 +409,8 @@ export default function TonWallet() {
                     transactions={transactions}
                     darkMode={darkMode}
                     language={language}
+                    onSend={() => setShowSendModal(true)}
+                    onReceive={() => setShowReceiveModal(true)}
                 />
                 {/* Account Modals */}
                 <AccountsModal

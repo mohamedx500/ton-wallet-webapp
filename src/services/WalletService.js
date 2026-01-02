@@ -20,7 +20,7 @@ import {
     contractAddress,
     SendMode,
 } from '@ton/core';
-import { HighloadWalletV3, HighloadQueryId } from '../wallets/highload-v3/index.ts';
+import { HighloadWalletV3, HighloadQueryId, QueryIdStore } from '../wallets/highload-v3/index.ts';
 
 // =============================================================================
 // WALLET CONTRACT CODES (Lazy-loaded to prevent module load errors)
@@ -93,10 +93,10 @@ export class WalletService {
                 ? 'https://testnet.toncenter.com/api/v2/jsonRPC'
                 : 'https://toncenter.com/api/v2/jsonRPC';
 
-            // Add API key for better reliability (same as standalone script)
+            // Add API key for better reliability (from .env)
             const apiKey = testnet
                 ? null // Testnet typically doesn't need API key
-                : '71c9bbbe269c08126825732952e000a2fc90fd074696546eb76b452c33234317'; // Same as .env
+                : (import.meta.env.VITE_TONCENTER_API_KEY || null); // Toncenter API key from .env
 
             this.clients[network] = new TonClient({
                 endpoint,
@@ -382,8 +382,8 @@ export class WalletService {
         console.log('- testnet:', testnet);
         console.log('================================');
 
-        const keyPair = await mnemonicToPrivateKey(mnemonic);
-        const client = this.getClient(testnet);
+        const SUBWALLET_ID = 698983191;
+        const TIMEOUT = 3600;
 
         try {
             // Validate amount parameter
@@ -402,111 +402,76 @@ export class WalletService {
             }
 
             console.log('Testing address parsing...');
-            try {
-                const parsedAddress = Address.parse(recipient);
-                console.log('✅ Recipient address parsed successfully:', parsedAddress.toString());
-            } catch (parseError) {
-                console.error('❌ Address parsing failed:', parseError.message);
-                throw new Error(`Invalid recipient address: ${recipient}. Error: ${parseError.message}`);
-            }
+            const parsedAddress = Address.parse(recipient);
+            console.log('✅ Recipient address parsed successfully:', parsedAddress.toString());
 
-            console.log('Highload transaction params:', {
-                amount,
-                numericAmount,
-                recipient,
-                comment
-            });
+            const keyPair = await mnemonicToPrivateKey(mnemonic);
+            const client = this.getClient(testnet);
 
-            // Import wallet to get address and init data
-            console.log('Importing wallet...');
-            const walletInfo = await this.importWallet(mnemonic, 'highload-v3', testnet);
-            console.log('✅ Wallet imported:', walletInfo.address);
-
-            // Create HighloadWalletV3 instance using client.open() like the working code
+            // Create wallet instance using client.open() - this binds the provider automatically
             console.log('Creating HighloadWalletV3 instance...');
-            const highloadWallet = client.open(
+            const wallet = client.open(
                 HighloadWalletV3.createFromConfig(
-                    {
-                        publicKey: keyPair.publicKey,
-                        subwalletId: 698983191,
-                        timeout: 3600
-                    },
-                    getHighloadV3Code()  // Use the contract code
+                    { publicKey: keyPair.publicKey, subwalletId: SUBWALLET_ID, timeout: TIMEOUT },
+                    getHighloadV3Code()
                 )
             );
 
-            console.log('✅ Highload wallet created successfully!');
-            console.log('Wallet address:', highloadWallet.address.toString());
-            console.log('Expected address (from .env): UQCqBmqMYUL1zkWIH_yw5-t1QIc4sxE_TkgSkuLjHqO6AYWI');
+            const walletAddress = wallet.address.toString({ bounceable: true });
+            console.log('✅ Wallet address:', walletAddress);
 
-            // Generate a UNIQUE query_id based on current time (from working implementation)
-            const now = Date.now();
-            const shift = Math.floor(now / 1000) % 8192;  // Use seconds as shift (0-8191)
-            const bitNumber = now % 1023;  // Use milliseconds mod 1023 as bit_number
-            const queryIdInstance = HighloadQueryId.fromShiftAndBitNumber(shift, bitNumber);
-            const queryId = BigInt(queryIdInstance.getQueryId());
+            // Build internal message
+            const internalMessage = internal({
+                to: parsedAddress,
+                value: toNano(numericAmount.toString()),
+                bounce: false,
+            });
 
-            console.log('queryIdInstance:', queryIdInstance);
-            console.log('queryIdInstance.getQueryId():', queryIdInstance.getQueryId());
-            console.log('queryId (BigInt):', queryId);
-
-            // Create internal message directly (not using actions) - matching working code
-            console.log('Creating internal message...');
-            let internalMessage;
-            try {
-                const recipientAddress = Address.parse(recipient);
-                console.log('✅ Recipient address for message:', recipientAddress.toString());
-
-                internalMessage = internal({
-                    to: recipientAddress,
-                    value: toNano(numericAmount.toString()),
-                    bounce: false,
-                    // Note: Comments not supported in this simple format
-                });
-                console.log('✅ Internal message created successfully');
-            } catch (messageError) {
-                console.error('❌ Failed to create internal message:', messageError.message);
-                throw new Error(`Failed to create internal message: ${messageError.message}`);
-            }
-
-            // Try multiple createdAt offsets like the working code
+            // Try multiple createdAt offsets
             const offsets = [30, 60, 120, 180];
-            const timeout = 3600; // 1 hour timeout
             let lastError = null;
 
             for (const offset of offsets) {
                 const createdAt = Math.floor(Date.now() / 1000) - offset;
                 console.log(`Trying with createdAt offset: ${offset}s (ts=${createdAt})`);
 
+                // Generate a UNIQUE query_id based on current time
+                const now = Date.now();
+                const shift = Math.floor(now / 1000) % 8192;
+                const bitNumber = now % 1023;
+                const queryId = HighloadQueryId.fromShiftAndBitNumber(shift, bitNumber);
+                console.log(`Query ID: shift=${shift}, bitNumber=${bitNumber} (unique: ${queryId.getQueryId()})`);
+
                 try {
-                    // Send the transaction with this offset
-                    await this.withRetry(async () => {
-                        await highloadWallet.sendExternalMessage(
-                            client.provider(highloadWallet.address),
-                            keyPair.secretKey,
-                            {
-                                message: internalMessage,
-                                mode: SendMode.PAY_GAS_SEPARATELY,
-                                query_id: queryIdInstance,
-                                createdAt,
-                                subwalletId: 698983191,
-                                timeout,
-                            }
-                        );
+                    // The key: client.open() returns a proxy that auto-injects provider as first arg
+                    // So we call: wallet.sendExternalMessage(secretKey, opts)
+                    await wallet.sendExternalMessage(keyPair.secretKey, {
+                        message: internalMessage,
+                        mode: SendMode.PAY_GAS_SEPARATELY,
+                        query_id: queryId,
+                        createdAt: createdAt,
+                        subwalletId: SUBWALLET_ID,
+                        timeout: TIMEOUT,
                     });
 
-                    console.log('Highload transaction sent successfully!');
-                    return { success: true, seqno: queryId.toString() };
+                    console.log('SUCCESS! Transfer sent!');
+                    console.log(`View: https://tonviewer.com/${walletAddress}`);
+                    return { success: true, seqno: queryId.getQueryId().toString() };
 
                 } catch (error) {
                     console.log(`Failed with offset ${offset}s: ${error.message}`);
                     lastError = error;
-                    // Continue to next offset
+
+                    // Check for specific error codes
+                    if (error.response?.data) {
+                        console.log(`Response: ${JSON.stringify(error.response.data)}`);
+                    }
                 }
             }
 
-            // If all offsets failed, throw the last error
+            // All attempts failed
             throw lastError || new Error('All timestamp offsets failed');
+
         } catch (error) {
             console.error('Error sending highload transaction:', error);
             throw new Error(`Failed to send highload transaction: ${error.message}`);

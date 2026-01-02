@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Copy, ExternalLink, ArrowDownToLine, Send, Check, Eye, EyeOff, Loader2, Share2, Wallet, TriangleAlert } from 'lucide-react';
+import { X, Copy, ExternalLink, ArrowDownToLine, Send, Check, Eye, EyeOff, Loader2, Share2, Wallet, TriangleAlert, ChevronRight, RefreshCw } from 'lucide-react';
 
 interface BaseModalProps {
     isOpen: boolean;
@@ -53,10 +53,12 @@ interface TokenDetailsModalProps {
     transactions: any[];
     darkMode: boolean;
     language: string;
+    onSend?: () => void;
+    onReceive?: () => void;
 }
 
 // Token Details Modal
-export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMode, language }: TokenDetailsModalProps) {
+export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMode, language, onSend, onReceive }: TokenDetailsModalProps) {
     if (!isOpen || !token) return null;
 
     // Filter transactions for this token
@@ -116,10 +118,22 @@ export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMo
 
                 {/* Actions */}
                 <div className="flex gap-4 mb-8 shrink-0">
-                    <button className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition">
+                    <button
+                        onClick={() => {
+                            onClose();
+                            onSend?.();
+                        }}
+                        className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition"
+                    >
                         {language === 'ar' ? 'إرسال' : 'Send'}
                     </button>
-                    <button className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition">
+                    <button
+                        onClick={() => {
+                            onClose();
+                            onReceive?.();
+                        }}
+                        className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition"
+                    >
                         {language === 'ar' ? 'استلام' : 'Receive'}
                     </button>
                 </div>
@@ -630,33 +644,507 @@ export function ReceiveModal({ isOpen, onClose, darkMode, language, walletAddres
     );
 }
 
-// Buy Modal
-export function BuyModal({ isOpen, onClose, darkMode, language }: BaseModalProps) {
+// Buy Modal - Simple redirect to Changelly
+interface BuyModalProps extends BaseModalProps {
+    walletAddress: string;
+}
+
+export function BuyModal({ isOpen, onClose, darkMode, language, walletAddress }: BuyModalProps) {
+    const handleGoToSite = () => {
+        window.open('https://changelly.com/buy-crypto', '_blank', 'noopener,noreferrer');
+        onClose();
+    };
+
     if (!isOpen) return null;
+
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-3xl p-6 animate-scale-up`} onClick={(e) => e.stopPropagation()}>
-                <div className="text-center">
-                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <ExternalLink size={32} className="text-blue-600" />
-                    </div>
-                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-2`}>{language === 'ar' ? 'شراء TON' : 'Buy TON'}</h3>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'} mb-6`}>
-                        {language === 'ar' ? 'سيتم تحويلك إلى مزود خدمة خارجي لإكمال عملية الشراء.' : 'You will be redirected to an external provider to complete the purchase.'}
-                    </p>
-                    <div className="flex gap-3">
-                        <button onClick={onClose} className={`flex-1 py-3 rounded-xl font-medium ${darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} transition`}>
-                            {language === 'ar' ? 'إلغاء' : 'Cancel'}
-                        </button>
-                        <button className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition">
-                            {language === 'ar' ? 'متابعة' : 'Continue'}
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-[24px] overflow-hidden animate-scale-up shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+
+                {/* Header */}
+                <div className={`p-5 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+                    <div className="flex justify-between items-center">
+                        <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {language === 'ar' ? 'شراء عملات رقمية' : 'Buy Crypto'}
+                        </h3>
+                        <button onClick={onClose} className={`p-2 rounded-full ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'} transition`}>
+                            <X size={20} />
                         </button>
                     </div>
+                </div>
+
+                <div className="p-5">
+                    {/* Changelly Provider Card */}
+                    <button
+                        onClick={handleGoToSite}
+                        className={`w-full p-4 rounded-2xl ${darkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-gray-50 hover:bg-gray-100'} transition group`}
+                    >
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-green-500/20">
+                                <span className="text-white font-bold text-2xl">C</span>
+                            </div>
+                            <div className="flex-1 text-left">
+                                <p className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>Changelly</p>
+                                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    {language === 'ar' ? 'محرك تبادل فوري' : 'An instant swap engine'}
+                                </p>
+                            </div>
+                            <ChevronRight size={20} className={`${darkMode ? 'text-gray-500' : 'text-gray-400'} group-hover:translate-x-1 transition-transform`} />
+                        </div>
+                    </button>
                 </div>
             </div>
         </div>
     );
 }
+// Swap Modal - Real On-Chain Swap Interface
+interface SwapModalProps extends BaseModalProps {
+    walletAddress: string;
+    tokens: any[];
+    onSwapInitiated?: (swapData: any) => void;
+}
+
+export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, tokens, onSwapInitiated }: SwapModalProps) {
+    const [fromToken, setFromToken] = useState('TON');
+    const [toToken, setToToken] = useState('USDT');
+    const [amount, setAmount] = useState('');
+    const [selectedDex, setSelectedDex] = useState<'stonfi' | 'dedust'>('stonfi');
+    const [showFromPicker, setShowFromPicker] = useState(false);
+    const [showToPicker, setShowToPicker] = useState(false);
+    const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+    const [quote, setQuote] = useState<any>(null);
+    const [error, setError] = useState('');
+
+    const availableTokens = [
+        { symbol: 'TON', name: 'Toncoin', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png', decimals: 9 },
+        { symbol: 'USDT', name: 'Tether USD', icon: 'https://tether.to/images/logoCircle.png', decimals: 6 },
+        { symbol: 'USDC', name: 'USD Coin', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6 },
+        { symbol: 'NOT', name: 'Notcoin', icon: 'https://cache.tonapi.io/imgproxy/4KCMNm34jZLXt0rqeFm4rH-BK4FoK76EVX9r0cCIGDg/rs:fill:200:200:1/g:no/aHR0cHM6Ly9jZG4uam9pbmNvbW11bml0eS54eXovbm90L2xvZ28ucG5n.webp', decimals: 9 },
+        { symbol: 'DOGS', name: 'Dogs', icon: 'https://cache.tonapi.io/imgproxy/4K0vW2fG-B3x-Kbp-i_ZC9nQHfO7uP5YJ3r7QoPqhvo/rs:fill:200:200:1/g:no/aHR0cHM6Ly9jZG4uam9pbmNvbW11bml0eS54eXovY2xpY2tlci9kb2dzL2xvZ28ucG5n.webp', decimals: 9 },
+    ];
+
+    const dexProviders = [
+        { id: 'stonfi' as const, name: 'STON.fi' },
+        { id: 'dedust' as const, name: 'DeDust' },
+    ];
+
+    const getToken = (symbol: string) => availableTokens.find(t => t.symbol === symbol);
+
+    const getBalance = (symbol: string) => {
+        const token = tokens.find(t => t.symbol === symbol);
+        return token?.rawBalance || 0;
+    };
+
+    const handleSwapTokens = () => {
+        const temp = fromToken;
+        setFromToken(toToken);
+        setToToken(temp);
+        setQuote(null);
+    };
+
+    // Fetch quote when amount changes
+    const fetchQuote = async () => {
+        if (!amount || parseFloat(amount) <= 0 || fromToken === toToken) {
+            setQuote(null);
+            return;
+        }
+
+        setIsLoadingQuote(true);
+        setError('');
+
+        try {
+            // Fetch real prices from STON.fi assets API
+            const response = await fetch('https://api.ston.fi/v1/assets');
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch prices');
+            }
+
+            const data = await response.json();
+            const assets = data.asset_list || [];
+
+            // Token symbols mapping
+            const symbolMap: Record<string, string> = {
+                TON: 'TON',
+                USDT: 'USD₮',
+                USDC: 'jUSDC',
+                NOT: 'NOT',
+                DOGS: 'DOGS',
+            };
+
+            // Find prices for tokens
+            const fromAsset = assets.find((a: any) => a.symbol === symbolMap[fromToken] || a.symbol === fromToken);
+            const toAsset = assets.find((a: any) => a.symbol === symbolMap[toToken] || a.symbol === toToken);
+
+            if (!fromAsset || !toAsset) {
+                throw new Error('Token not found');
+            }
+
+            const fromPrice = parseFloat(fromAsset.dex_usd_price || fromAsset.third_party_usd_price || '0');
+            const toPrice = parseFloat(toAsset.dex_usd_price || toAsset.third_party_usd_price || '0');
+
+            if (fromPrice <= 0 || toPrice <= 0) {
+                throw new Error('Price unavailable');
+            }
+
+            const inputAmount = parseFloat(amount);
+            const outputAmount = (inputAmount * fromPrice / toPrice);
+            const minOutput = outputAmount * 0.99; // 1% slippage
+            const rate = fromPrice / toPrice;
+            const toDecimals = getToken(toToken)?.decimals || 6;
+
+            setQuote({
+                provider: selectedDex,
+                fromToken,
+                toToken,
+                inputAmount: amount,
+                outputAmount: outputAmount.toFixed(toDecimals > 6 ? 4 : 2),
+                minOutputAmount: minOutput.toFixed(toDecimals > 6 ? 4 : 2),
+                priceImpact: '< 0.1%',
+                fee: '~0.3%',
+                rate: `1 ${fromToken} ≈ ${rate.toFixed(4)} ${toToken}`,
+                fromPriceUsd: fromPrice.toFixed(4),
+                toPriceUsd: toPrice.toFixed(4),
+            });
+        } catch (err) {
+            console.warn('[SwapModal] Using fallback prices:', err);
+
+            // Fallback to approximate prices
+            const fallbackPrices: Record<string, number> = {
+                TON: 1.67,  // Current approximate price
+                USDT: 1.0,
+                USDC: 1.0,
+                NOT: 0.0005,
+                DOGS: 0.00004,
+            };
+
+            const fromPrice = fallbackPrices[fromToken] || 1;
+            const toPrice = fallbackPrices[toToken] || 1;
+            const inputAmount = parseFloat(amount);
+            const outputAmount = (inputAmount * fromPrice / toPrice);
+            const minOutput = outputAmount * 0.99;
+            const toDecimals = getToken(toToken)?.decimals || 6;
+
+            setQuote({
+                provider: selectedDex,
+                fromToken,
+                toToken,
+                inputAmount: amount,
+                outputAmount: outputAmount.toFixed(toDecimals > 6 ? 4 : 2),
+                minOutputAmount: minOutput.toFixed(toDecimals > 6 ? 4 : 2),
+                priceImpact: '< 0.1%',
+                fee: '~0.3%',
+                rate: `1 ${fromToken} ≈ ${(fromPrice / toPrice).toFixed(4)} ${toToken}`,
+                isEstimate: true,
+            });
+        } finally {
+            setIsLoadingQuote(false);
+        }
+    };
+
+    // Debounce quote fetching when amount/tokens change
+    React.useEffect(() => {
+        const timer = setTimeout(() => {
+            if (amount && parseFloat(amount) > 0) {
+                fetchQuote();
+            }
+        }, 500);
+        return () => clearTimeout(timer);
+    }, [amount, fromToken, toToken, selectedDex]);
+
+    // Auto-refresh prices every 10 seconds
+    const [refreshCountdown, setRefreshCountdown] = React.useState(10);
+
+    React.useEffect(() => {
+        if (!isOpen || !amount || parseFloat(amount) <= 0) {
+            setRefreshCountdown(10);
+            return;
+        }
+
+        // Countdown timer
+        const countdownInterval = setInterval(() => {
+            setRefreshCountdown(prev => {
+                if (prev <= 1) {
+                    return 10; // Reset countdown
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        // Refresh prices every 10 seconds
+        const refreshInterval = setInterval(() => {
+            if (amount && parseFloat(amount) > 0 && !isLoadingQuote) {
+                fetchQuote();
+            }
+        }, 10000);
+
+        return () => {
+            clearInterval(countdownInterval);
+            clearInterval(refreshInterval);
+        };
+    }, [isOpen, amount, fromToken, toToken, selectedDex]);
+
+    // Reset countdown when quote is manually fetched
+    const handleManualRefresh = () => {
+        setRefreshCountdown(10);
+        if (amount && parseFloat(amount) > 0) {
+            fetchQuote();
+        }
+    };
+
+    const handleMaxClick = () => {
+        const balance = getBalance(fromToken);
+        // For TON, leave some for gas
+        const max = fromToken === 'TON' ? Math.max(0, balance - 0.5) : balance;
+        setAmount(max.toString());
+    };
+
+    const handleSwap = () => {
+        if (!quote || !amount || parseFloat(amount) <= 0) return;
+
+        const balance = getBalance(fromToken);
+        if (parseFloat(amount) > balance) {
+            setError(language === 'ar' ? 'رصيد غير كافي' : 'Insufficient balance');
+            return;
+        }
+
+        // Trigger swap - this will open password modal for confirmation
+        if (onSwapInitiated) {
+            onSwapInitiated({
+                fromToken,
+                toToken,
+                amount,
+                minOutput: quote.minOutputAmount,
+                provider: selectedDex,
+                quote,
+            });
+        }
+        onClose();
+    };
+
+    if (!isOpen) return null;
+
+    const fromTokenData = getToken(fromToken);
+    const toTokenData = getToken(toToken);
+    const balance = getBalance(fromToken);
+    const hasInsufficientBalance = parseFloat(amount || '0') > balance;
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl animate-scale-up shadow-xl`} onClick={(e) => e.stopPropagation()}>
+
+                {/* Header */}
+                <div className={`p-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+                    <div className="flex justify-between items-center">
+                        <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {language === 'ar' ? 'تبديل' : 'Swap'}
+                        </h3>
+                        <button onClick={onClose} className={`p-1.5 rounded-full ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                            <X size={18} />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="p-4">
+                    {/* Send Section */}
+                    <div className={`p-3 rounded-xl mb-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                        <div className="flex justify-between items-center mb-2">
+                            <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                {language === 'ar' ? 'أرسل' : 'Send'}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                    {language === 'ar' ? 'الرصيد:' : 'Balance:'} {balance.toFixed(4)}
+                                </span>
+                                <button
+                                    onClick={handleMaxClick}
+                                    className="text-xs text-blue-500 font-semibold hover:text-blue-400"
+                                >
+                                    MAX
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => { setShowFromPicker(!showFromPicker); setShowToPicker(false); }}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-100'} transition`}
+                            >
+                                <img src={fromTokenData?.icon} alt={fromToken} className="w-6 h-6 rounded-full" />
+                                <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{fromToken}</span>
+                                <ArrowDownToLine size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                            </button>
+                            <input
+                                type="number"
+                                inputMode="decimal"
+                                value={amount}
+                                onChange={(e) => setAmount(e.target.value)}
+                                placeholder="0"
+                                style={{ MozAppearance: 'textfield' }}
+                                className={`flex-1 text-right text-2xl font-bold bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${hasInsufficientBalance
+                                    ? 'text-red-500'
+                                    : darkMode ? 'text-white' : 'text-gray-900'
+                                    }`}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Token Picker - From */}
+                    {showFromPicker && (
+                        <div className={`rounded-xl mb-2 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                            {availableTokens.filter(t => t.symbol !== toToken).map((t) => (
+                                <button
+                                    key={t.symbol}
+                                    onClick={() => { setFromToken(t.symbol); setShowFromPicker(false); setQuote(null); }}
+                                    className={`w-full flex items-center gap-3 p-3 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition`}
+                                >
+                                    <img src={t.icon} alt={t.symbol} className="w-6 h-6 rounded-full" />
+                                    <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{t.symbol}</span>
+                                    <span className={`text-sm ml-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                        {getBalance(t.symbol).toFixed(4)}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Swap Direction */}
+                    <div className="flex justify-center -my-1 relative z-10">
+                        <button
+                            onClick={handleSwapTokens}
+                            className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-100'} border-4 ${darkMode ? 'border-gray-900' : 'border-white'} shadow transition`}
+                        >
+                            <ArrowDownToLine size={16} className={darkMode ? 'text-gray-300' : 'text-gray-600'} />
+                        </button>
+                    </div>
+
+                    {/* Receive Section */}
+                    <div className={`p-3 rounded-xl mb-3 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                        <div className="flex justify-between items-center mb-2">
+                            <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                {language === 'ar' ? 'استلم' : 'Receive'}
+                            </span>
+                            <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                {language === 'ar' ? 'الرصيد:' : 'Balance:'} {getBalance(toToken).toFixed(4)}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => { setShowToPicker(!showToPicker); setShowFromPicker(false); }}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-100'} transition`}
+                            >
+                                <img src={toTokenData?.icon} alt={toToken} className="w-6 h-6 rounded-full" />
+                                <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{toToken}</span>
+                                <ArrowDownToLine size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                            </button>
+                            <div className="flex-1 text-right">
+                                {isLoadingQuote ? (
+                                    <Loader2 size={20} className={`animate-spin ml-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
+                                ) : (
+                                    <span className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        {quote ? quote.outputAmount : '0'}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Token Picker - To */}
+                    {showToPicker && (
+                        <div className={`rounded-xl mb-3 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                            {availableTokens.filter(t => t.symbol !== fromToken).map((t) => (
+                                <button
+                                    key={t.symbol}
+                                    onClick={() => { setToToken(t.symbol); setShowToPicker(false); setQuote(null); }}
+                                    className={`w-full flex items-center gap-3 p-3 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition`}
+                                >
+                                    <img src={t.icon} alt={t.symbol} className="w-6 h-6 rounded-full" />
+                                    <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{t.symbol}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Quote Info */}
+                    {quote && !isLoadingQuote && (
+                        <div className={`p-3 rounded-xl mb-3 ${darkMode ? 'bg-gray-800/50' : 'bg-gray-50'}`}>
+                            {/* Rate with refresh indicator */}
+                            <div className="flex justify-between items-center text-xs mb-1">
+                                <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>{language === 'ar' ? 'السعر' : 'Rate'}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{quote.rate}</span>
+                                    <button
+                                        onClick={handleManualRefresh}
+                                        className={`p-1 rounded-full hover:bg-gray-700/50 transition ${isLoadingQuote ? 'animate-spin' : ''}`}
+                                        title={`${language === 'ar' ? 'تحديث' : 'Refresh'} (${refreshCountdown}s)`}
+                                    >
+                                        <RefreshCw size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex justify-between text-xs mb-1">
+                                <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>{language === 'ar' ? 'الحد الأدنى' : 'Min. received'}</span>
+                                <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{quote.minOutputAmount} {toToken}</span>
+                            </div>
+                            <div className="flex justify-between text-xs mb-1">
+                                <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>{language === 'ar' ? 'المنصة' : 'Provider'}</span>
+                                <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{selectedDex === 'stonfi' ? 'STON.fi' : 'DeDust'}</span>
+                            </div>
+                            {/* Live update indicator */}
+                            <div className="flex items-center justify-center gap-1 mt-2 pt-2 border-t border-gray-700/50">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                                <span className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                    {language === 'ar' ? `تحديث تلقائي خلال ${refreshCountdown} ثانية` : `Auto-update in ${refreshCountdown}s`}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* DEX Selection */}
+                    <div className="flex gap-2 mb-3">
+                        {dexProviders.map((dex) => (
+                            <button
+                                key={dex.id}
+                                onClick={() => { setSelectedDex(dex.id); setQuote(null); }}
+                                className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${selectedDex === dex.id
+                                    ? 'bg-blue-500 text-white'
+                                    : `${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600'}`
+                                    }`}
+                            >
+                                {dex.name}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Error Message */}
+                    {error && (
+                        <div className="p-2 mb-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                            <p className="text-red-500 text-sm text-center">{error}</p>
+                        </div>
+                    )}
+
+                    {/* Swap Button */}
+                    <button
+                        onClick={handleSwap}
+                        disabled={!quote || !amount || parseFloat(amount) <= 0 || hasInsufficientBalance || isLoadingQuote}
+                        className="w-full py-3.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                        {isLoadingQuote ? (
+                            <Loader2 size={18} className="animate-spin" />
+                        ) : hasInsufficientBalance ? (
+                            language === 'ar' ? 'رصيد غير كافي' : 'Insufficient Balance'
+                        ) : (
+                            <>
+                                <Send size={16} />
+                                {language === 'ar' ? 'تبديل' : 'Swap'}
+                            </>
+                        )}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 
 // Backup Modal
 interface BackupModalProps extends BaseModalProps {

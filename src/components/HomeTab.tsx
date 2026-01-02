@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, ArrowDownToLine, Wallet, ChevronRight } from 'lucide-react';
+import { Send, ArrowDownToLine, Wallet, ChevronRight, ArrowRightLeft } from 'lucide-react';
 
 interface HomeTabProps {
     darkMode: boolean;
@@ -7,47 +7,60 @@ interface HomeTabProps {
     setShowSendModal: (v: boolean) => void;
     setShowReceiveModal: (v: boolean) => void;
     setShowBuyModal: (v: boolean) => void;
+    setShowSwapModal: (v: boolean) => void;
     tokens: any[];
     onTokenClick: (token: any) => void;
 }
 
-export default function HomeTab({ darkMode, language, setShowSendModal, setShowReceiveModal, setShowBuyModal, tokens, onTokenClick }: HomeTabProps) {
+export default function HomeTab({ darkMode, language, setShowSendModal, setShowReceiveModal, setShowBuyModal, setShowSwapModal, tokens, onTokenClick }: HomeTabProps) {
     return (
         <>
-            <div className="grid grid-cols-3 gap-3 p-6">
+            <div className="grid grid-cols-4 gap-2 p-6">
                 <button
                     onClick={() => setShowSendModal(true)}
-                    className={`flex flex-col items-center justify-center p-4 ${darkMode ? 'bg-blue-950/50' : 'bg-blue-50'} rounded-2xl ${darkMode ? 'hover:bg-blue-950/70' : 'hover:bg-blue-100'} transition`}
+                    className={`flex flex-col items-center justify-center p-3 ${darkMode ? 'bg-blue-950/50' : 'bg-blue-50'} rounded-2xl ${darkMode ? 'hover:bg-blue-950/70' : 'hover:bg-blue-100'} transition`}
                 >
-                    <div className={`w-12 h-12 ${darkMode ? 'bg-blue-900' : 'bg-blue-600'} rounded-full flex items-center justify-center mb-2`}>
-                        <Send size={20} className="text-white" />
+                    <div className={`w-10 h-10 ${darkMode ? 'bg-blue-900' : 'bg-blue-600'} rounded-full flex items-center justify-center mb-1.5`}>
+                        <Send size={18} className="text-white" />
                     </div>
-                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {language === 'ar' ? 'إرسال' : 'Send'}
                     </span>
                 </button>
 
                 <button
                     onClick={() => setShowReceiveModal(true)}
-                    className={`flex flex-col items-center justify-center p-4 ${darkMode ? 'bg-green-950/50' : 'bg-green-50'} rounded-2xl ${darkMode ? 'hover:bg-green-950/70' : 'hover:bg-green-100'} transition`}
+                    className={`flex flex-col items-center justify-center p-3 ${darkMode ? 'bg-green-950/50' : 'bg-green-50'} rounded-2xl ${darkMode ? 'hover:bg-green-950/70' : 'hover:bg-green-100'} transition`}
                 >
-                    <div className={`w-12 h-12 ${darkMode ? 'bg-green-900' : 'bg-green-600'} rounded-full flex items-center justify-center mb-2`}>
-                        <ArrowDownToLine size={20} className="text-white" />
+                    <div className={`w-10 h-10 ${darkMode ? 'bg-green-900' : 'bg-green-600'} rounded-full flex items-center justify-center mb-1.5`}>
+                        <ArrowDownToLine size={18} className="text-white" />
                     </div>
-                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {language === 'ar' ? 'استلام' : 'Receive'}
                     </span>
                 </button>
 
                 <button
                     onClick={() => setShowBuyModal(true)}
-                    className={`flex flex-col items-center justify-center p-4 ${darkMode ? 'bg-purple-950/50' : 'bg-purple-50'} rounded-2xl ${darkMode ? 'hover:bg-purple-950/70' : 'hover:bg-purple-100'} transition`}
+                    className={`flex flex-col items-center justify-center p-3 ${darkMode ? 'bg-purple-950/50' : 'bg-purple-50'} rounded-2xl ${darkMode ? 'hover:bg-purple-950/70' : 'hover:bg-purple-100'} transition`}
                 >
-                    <div className={`w-12 h-12 ${darkMode ? 'bg-purple-900' : 'bg-purple-600'} rounded-full flex items-center justify-center mb-2`}>
-                        <Wallet size={20} className="text-white" />
+                    <div className={`w-10 h-10 ${darkMode ? 'bg-purple-900' : 'bg-purple-600'} rounded-full flex items-center justify-center mb-1.5`}>
+                        <Wallet size={18} className="text-white" />
                     </div>
-                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                         {language === 'ar' ? 'شراء' : 'Buy'}
+                    </span>
+                </button>
+
+                <button
+                    onClick={() => setShowSwapModal(true)}
+                    className={`flex flex-col items-center justify-center p-3 ${darkMode ? 'bg-orange-950/50' : 'bg-orange-50'} rounded-2xl ${darkMode ? 'hover:bg-orange-950/70' : 'hover:bg-orange-100'} transition`}
+                >
+                    <div className={`w-10 h-10 ${darkMode ? 'bg-orange-900' : 'bg-orange-500'} rounded-full flex items-center justify-center mb-1.5`}>
+                        <ArrowRightLeft size={18} className="text-white" />
+                    </div>
+                    <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {language === 'ar' ? 'تبديل' : 'Swap'}
                     </span>
                 </button>
             </div>
