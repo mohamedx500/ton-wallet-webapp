@@ -742,7 +742,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
         setQuote(null);
     };
 
-    // Fetch quote when amount changes
+    // Fetch quote when amount changes - using the new SwapService
     const fetchQuote = async () => {
         if (!amount || parseFloat(amount) <= 0 || fromToken === toToken) {
             setQuote(null);
@@ -753,69 +753,48 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
         setError('');
 
         try {
-            // Fetch real prices from STON.fi assets API
-            const response = await fetch('https://api.ston.fi/v1/assets');
+            // Import the SwapService dynamically
+            const { swapService } = await import('../services/SwapService');
 
-            if (!response.ok) {
-                throw new Error('Failed to fetch prices');
-            }
+            // Get the best quote from both DEXes (STON.fi and DeDust)
+            const result = await swapService.getBestQuote(fromToken, toToken, amount);
 
-            const data = await response.json();
-            const assets = data.asset_list || [];
+            // Use the best quote
+            const bestQuote = result.bestQuote;
 
-            // Token symbols mapping
-            const symbolMap: Record<string, string> = {
-                TON: 'TON',
-                USDT: 'USD₮',
-                USDC: 'jUSDC',
-                NOT: 'NOT',
-                DOGS: 'DOGS',
-            };
-
-            // Find prices for tokens
-            const fromAsset = assets.find((a: any) => a.symbol === symbolMap[fromToken] || a.symbol === fromToken);
-            const toAsset = assets.find((a: any) => a.symbol === symbolMap[toToken] || a.symbol === toToken);
-
-            if (!fromAsset || !toAsset) {
-                throw new Error('Token not found');
-            }
-
-            const fromPrice = parseFloat(fromAsset.dex_usd_price || fromAsset.third_party_usd_price || '0');
-            const toPrice = parseFloat(toAsset.dex_usd_price || toAsset.third_party_usd_price || '0');
-
-            if (fromPrice <= 0 || toPrice <= 0) {
-                throw new Error('Price unavailable');
-            }
-
-            const inputAmount = parseFloat(amount);
-            const outputAmount = (inputAmount * fromPrice / toPrice);
-            const minOutput = outputAmount * 0.99; // 1% slippage
-            const rate = fromPrice / toPrice;
-            const toDecimals = getToken(toToken)?.decimals || 6;
+            // Calculate rate for display
+            const inputNum = parseFloat(bestQuote.inputAmount);
+            const outputNum = parseFloat(bestQuote.outputAmount);
+            const rate = inputNum > 0 ? (outputNum / inputNum).toFixed(4) : '0';
 
             setQuote({
-                provider: selectedDex,
-                fromToken,
-                toToken,
-                inputAmount: amount,
-                outputAmount: outputAmount.toFixed(toDecimals > 6 ? 4 : 2),
-                minOutputAmount: minOutput.toFixed(toDecimals > 6 ? 4 : 2),
-                priceImpact: '< 0.1%',
-                fee: '~0.3%',
-                rate: `1 ${fromToken} ≈ ${rate.toFixed(4)} ${toToken}`,
-                fromPriceUsd: fromPrice.toFixed(4),
-                toPriceUsd: toPrice.toFixed(4),
+                provider: bestQuote.provider,
+                fromToken: bestQuote.fromToken,
+                toToken: bestQuote.toToken,
+                inputAmount: bestQuote.inputAmount,
+                outputAmount: bestQuote.outputAmount,
+                minOutputAmount: bestQuote.minOutputAmount,
+                priceImpact: bestQuote.priceImpact || '< 0.1%',
+                fee: bestQuote.fee || '~0.3%',
+                rate: `1 ${fromToken} ≈ ${rate} ${toToken}`,
+                isEstimate: bestQuote.isEstimate,
+                poolAddress: bestQuote.poolAddress,
+                allQuotes: result.allQuotes, // Store all quotes for comparison
             });
-        } catch (err) {
-            console.warn('[SwapModal] Using fallback prices:', err);
 
-            // Fallback to approximate prices
+            // Update selected DEX to match best quote
+            setSelectedDex(bestQuote.provider);
+        } catch (err: any) {
+            console.warn('[SwapModal] Quote error, using fallback:', err);
+
+            // Fallback to approximate prices if SwapService fails
+            // Updated to current market rates (Jan 2026)
             const fallbackPrices: Record<string, number> = {
-                TON: 1.67,  // Current approximate price
+                TON: 1.80,   // ~$1.80 per TON
                 USDT: 1.0,
                 USDC: 1.0,
-                NOT: 0.0005,
-                DOGS: 0.00004,
+                NOT: 0.005,
+                DOGS: 0.0003,
             };
 
             const fromPrice = fallbackPrices[fromToken] || 1;
@@ -1238,60 +1217,93 @@ export function PhraseModal({ isOpen, onClose, darkMode, language, seedPhrase, h
 export function TransactionModal({ transaction, onClose, darkMode, language }: TransactionModalProps) {
     if (!transaction) return null;
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50" onClick={onClose}>
-            <div className={`w-full max-w-md ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-3xl p-6 animate-slide-up`} onClick={(e) => e.stopPropagation()}>
-                <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6"></div>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center z-50" onClick={onClose}>
+            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-t-[32px] p-6 animate-slide-up shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+                <div className="w-10 h-1 bg-gray-300/50 rounded-full mx-auto mb-8"></div>
 
                 <div className="text-center mb-8">
-                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${transaction.type === 'received'
-                        ? darkMode ? 'bg-green-950 text-green-400' : 'bg-green-100 text-green-600'
-                        : darkMode ? 'bg-red-950 text-red-400' : 'bg-red-100 text-red-600'
+                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-100'
                         }`}>
-                        {transaction.type === 'received' ? <ArrowDownToLine size={32} /> : <Send size={32} />}
+                        {transaction.type === 'received' ? (
+                            <ArrowDownToLine size={28} className={darkMode ? 'text-gray-300' : 'text-gray-700'} />
+                        ) : (
+                            <Send size={28} className={darkMode ? 'text-gray-300' : 'text-gray-700'} />
+                        )}
                     </div>
-                    <h2 className={`text-2xl font-bold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'} dir-ltr`}>
-                        {transaction.amount} {transaction.token}
+
+                    <h2 className={`text-3xl font-bold mb-1 tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'} dir-ltr`}>
+                        {transaction.amount} <span className="text-xl font-medium text-gray-400">{transaction.token}</span>
                     </h2>
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                        {transaction.date}
+
+                    <p className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                        {transaction.time}
                     </p>
                 </div>
 
                 <div className="space-y-4 mb-8">
-                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-50'} space-y-3`}>
+                    <div className={`p-5 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} space-y-4`}>
+                        {/* Status Row */}
                         <div className="flex justify-between items-center">
-                            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{language === 'ar' ? 'الحالة' : 'Status'}</span>
-                            <span className={`text-sm font-medium ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{language === 'ar' ? 'مكتمل' : 'Completed'}</span>
+                            <span className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                                {language === 'ar' ? 'الحالة' : 'Status'}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                <span className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    {language === 'ar' ? 'مكتمل' : 'Completed'}
+                                </span>
+                            </div>
                         </div>
+
+                        {/* Fee Row */}
                         <div className="flex justify-between items-center">
-                            <span className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{language === 'ar' ? 'الرسوم' : 'Fee'}</span>
-                            <span className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{transaction.fee} TON</span>
+                            <span className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                                {language === 'ar' ? 'الرسوم' : 'Fee'}
+                            </span>
+                            <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                {transaction.fee} TON
+                            </span>
                         </div>
-                        <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-                            <div className="mb-1">
-                                <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+
+                        {/* Divider */}
+                        <div className={`h-px w-full ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}></div>
+
+                        {/* Address Row */}
+                        <div>
+                            <div className="flex justify-between items-center mb-1">
+                                <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                                     {transaction.type === 'received' ? (language === 'ar' ? 'من' : 'From') : (language === 'ar' ? 'إلى' : 'To')}
                                 </span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <p className={`text-xs font-mono break-all ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    {transaction.type === 'received' ? transaction.fullFrom : transaction.fullTo}
+                            <div className="flex items-center justify-between gap-3">
+                                <p className={`text-sm font-mono break-all ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                    {transaction.from}
                                 </p>
-                                <button className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition`}>
-                                    <Copy size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                                <button
+                                    onClick={() => navigator.clipboard.writeText(transaction.from)}
+                                    className={`p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition text-gray-400 hover:text-gray-600`}
+                                >
+                                    <Copy size={16} />
                                 </button>
                             </div>
                         </div>
-                        <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
-                            <div className="mb-1">
-                                <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{language === 'ar' ? 'رقم المعاملة' : 'Transaction Hash'}</span>
+
+                        {/* Hash Row */}
+                        <div className="pt-2">
+                            <div className="flex justify-between items-center mb-1">
+                                <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                    {language === 'ar' ? 'المعرف' : 'Hash'}
+                                </span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <p className={`text-xs font-mono break-all ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                            <div className="flex items-center justify-between gap-3">
+                                <p className={`text-xs font-mono break-all text-gray-500`}>
                                     {transaction.hash}
                                 </p>
-                                <button className={`p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition`}>
-                                    <Copy size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                                <button
+                                    onClick={() => navigator.clipboard.writeText(transaction.hash)}
+                                    className={`p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition text-gray-400 hover:text-gray-600`}
+                                >
+                                    <Copy size={14} />
                                 </button>
                             </div>
                         </div>
@@ -1299,11 +1311,15 @@ export function TransactionModal({ transaction, onClose, darkMode, language }: T
                 </div>
 
                 <div className="flex gap-3">
-                    <button className={`flex-1 py-3 rounded-xl font-bold ${darkMode ? 'bg-gray-800 text-white hover:bg-gray-700' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'} transition flex items-center justify-center gap-2`}>
+                    <button className={`flex-1 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition ${darkMode ? 'bg-gray-800 text-white hover:bg-gray-800/80' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                        }`}>
                         <ExternalLink size={18} />
-                        <span>{language === 'ar' ? 'عرض في المستكشف' : 'View in Explorer'}</span>
+                        <span>{language === 'ar' ? 'المستكشف' : 'Explorer'}</span>
                     </button>
-                    <button onClick={onClose} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition">
+                    <button
+                        onClick={onClose}
+                        className="flex-1 bg-black text-white dark:bg-white dark:text-black py-4 rounded-xl font-bold hover:opacity-90 transition"
+                    >
                         {language === 'ar' ? 'إغلاق' : 'Close'}
                     </button>
                 </div>

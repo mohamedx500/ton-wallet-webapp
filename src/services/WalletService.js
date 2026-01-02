@@ -160,6 +160,28 @@ export class WalletService {
     }
 
     /**
+     * Resolve address or domain
+     */
+    async resolveAddress(client, input) {
+        if (!input) throw new Error('Address required');
+
+        // Check if it is a domain
+        if (typeof input === 'string' && input.toLowerCase().endsWith('.ton')) {
+            console.log(`Resolving DNS: ${input}`);
+            const resolved = await client.dns.getWalletAddress(input);
+            if (!resolved) throw new Error(`Could not resolve domain: ${input}`);
+            console.log(`Resolved: ${resolved.toString()}`);
+            return resolved;
+        }
+
+        // Standard address parsing
+        if (typeof input === 'string') {
+            return Address.parse(input);
+        }
+        return input;
+    }
+
+    /**
      * Import wallet from mnemonic
      */
     async importWallet(mnemonic, walletType = 'v4r2', testnet = false) {
@@ -357,7 +379,7 @@ export class WalletService {
                 seqno,
                 messages: [
                     internal({
-                        to: Address.parse(recipient),
+                        to: await this.resolveAddress(client, recipient),
                         value: toNano(amount.toString()),
                         body,
                         bounce: false,
@@ -367,6 +389,153 @@ export class WalletService {
         });
 
         return { success: true, seqno };
+    }
+
+    /**
+     * Send TON transaction with custom Cell payload (for DEX swaps, etc.)
+     * @param {string[]} mnemonic - Wallet mnemonic
+     * @param {string} walletType - Wallet version
+     * @param {string} recipient - Recipient address
+     * @param {string} amount - Amount in TON
+     * @param {Cell} body - Custom Cell payload
+     * @param {boolean} testnet - Network
+     */
+    async sendTransactionWithPayload(mnemonic, walletType, recipient, amount, body, testnet = false) {
+        console.log('[WalletService] sendTransactionWithPayload:', { recipient, amount, hasBody: !!body });
+
+        const keyPair = await mnemonicToPrivateKey(mnemonic);
+        const client = this.getClient(testnet);
+
+        let wallet;
+
+        switch (walletType) {
+            case 'v3r2':
+                wallet = client.open(WalletContractV3R2.create({
+                    publicKey: keyPair.publicKey,
+                    workchain: 0,
+                }));
+                break;
+
+            case 'v4r2':
+                wallet = client.open(WalletContractV4.create({
+                    publicKey: keyPair.publicKey,
+                    workchain: 0,
+                }));
+                break;
+
+            case 'highload-v3':
+                // Highload V3 uses different API
+                return await this.sendHighloadTransactionWithPayload(mnemonic, recipient, amount, body, testnet);
+
+            default:
+                wallet = client.open(WalletContractV4.create({
+                    publicKey: keyPair.publicKey,
+                    workchain: 0,
+                }));
+                break;
+        }
+
+        // Get seqno with retry
+        let seqno = 0;
+        try {
+            seqno = await this.withRetry(async () => {
+                return await wallet.getSeqno();
+            });
+        } catch (e) {
+            console.log('Could not get seqno, using 0:', e.message);
+            seqno = 0;
+        }
+
+        // Send transfer with custom body
+        await this.withRetry(async () => {
+            await wallet.sendTransfer({
+                secretKey: keyPair.secretKey,
+                seqno,
+                messages: [
+                    internal({
+                        to: await this.resolveAddress(client, recipient),
+                        value: toNano(amount.toString()),
+                        body: body, // Custom Cell payload
+                        bounce: false,
+                    })
+                ],
+            });
+        });
+
+        console.log('[WalletService] Transaction with payload sent successfully');
+        return { success: true, seqno };
+    }
+
+    /**
+     * Send Highload V3 transaction with custom Cell payload
+     */
+    async sendHighloadTransactionWithPayload(mnemonic, recipient, amount, body, testnet = false) {
+        console.log('=== HIGHLOAD TRANSACTION WITH PAYLOAD ===');
+        console.log('Parameters: recipient=', recipient, 'amount=', amount, 'hasBody=', !!body);
+
+        const SUBWALLET_ID = 698983191;
+        const TIMEOUT = 3600;
+
+        try {
+            const numericAmount = parseFloat(amount);
+            if (isNaN(numericAmount) || numericAmount <= 0) {
+                throw new Error('Invalid amount: must be a positive number');
+            }
+
+            const client = this.getClient(testnet);
+            const parsedAddress = await this.resolveAddress(client, recipient);
+            const keyPair = await mnemonicToPrivateKey(mnemonic);
+
+            const wallet = client.open(
+                HighloadWalletV3.createFromConfig(
+                    { publicKey: keyPair.publicKey, subwalletId: SUBWALLET_ID, timeout: TIMEOUT },
+                    getHighloadV3Code()
+                )
+            );
+
+            // Build internal message WITH the payload body
+            const internalMessage = internal({
+                to: parsedAddress,
+                value: toNano(numericAmount.toString()),
+                body: body, // Custom Cell payload for swap
+                bounce: false,
+            });
+
+            const offsets = [30, 60, 120, 180];
+            let lastError = null;
+
+            for (const offset of offsets) {
+                const createdAt = Math.floor(Date.now() / 1000) - offset;
+                const now = Date.now();
+                const shift = Math.floor(now / 1000) % 8192;
+                const bitNumber = now % 1023;
+                const queryId = HighloadQueryId.fromShiftAndBitNumber(shift, bitNumber);
+
+                try {
+                    await wallet.sendExternalMessage(keyPair.secretKey, {
+                        message: internalMessage,
+                        mode: SendMode.PAY_GAS_SEPARATELY,
+                        query_id: queryId,
+                        createdAt: createdAt,
+                        subwalletId: SUBWALLET_ID,
+                        timeout: TIMEOUT,
+                    });
+
+                    console.log('SUCCESS! Swap transaction sent!');
+                    return { success: true, seqno: queryId.getQueryId().toString() };
+
+                } catch (error) {
+                    console.log(`Failed with offset ${offset}s: ${error.message}`);
+                    lastError = error;
+                }
+            }
+
+            throw lastError || new Error('All timestamp offsets failed');
+
+        } catch (error) {
+            console.error('Error sending highload transaction with payload:', error);
+            throw new Error(`Failed to send swap transaction: ${error.message}`);
+        }
     }
 
     /**
@@ -402,11 +571,11 @@ export class WalletService {
             }
 
             console.log('Testing address parsing...');
-            const parsedAddress = Address.parse(recipient);
+            const client = this.getClient(testnet);
+            const parsedAddress = await this.resolveAddress(client, recipient);
             console.log('✅ Recipient address parsed successfully:', parsedAddress.toString());
 
             const keyPair = await mnemonicToPrivateKey(mnemonic);
-            const client = this.getClient(testnet);
 
             // Create wallet instance using client.open() - this binds the provider automatically
             console.log('Creating HighloadWalletV3 instance...');
@@ -493,45 +662,8 @@ export class WalletService {
         const keyPair = await mnemonicToPrivateKey(mnemonic);
         const client = this.getClient(testnet);
 
-        let wallet;
-
-        switch (walletType) {
-            case 'v3r2':
-                wallet = client.open(WalletContractV3R2.create({
-                    publicKey: keyPair.publicKey,
-                    workchain: 0,
-                }));
-                break;
-
-            case 'v4r2':
-                wallet = client.open(WalletContractV4.create({
-                    publicKey: keyPair.publicKey,
-                    workchain: 0,
-                }));
-                break;
-
-            case 'highload-v3':
-                // Highload V3 uses different API - throw error for now
-                throw new Error('Jetton transfers not yet supported for Highload V3 wallets');
-
-            default:
-                wallet = client.open(WalletContractV4.create({
-                    publicKey: keyPair.publicKey,
-                    workchain: 0,
-                }));
-                break;
-        }
-
-        // Get seqno with retry
-        let seqno = 0;
-        try {
-            seqno = await this.withRetry(async () => {
-                return await wallet.getSeqno();
-            });
-        } catch (e) {
-            console.log('Could not get seqno, using 0:', e.message);
-            seqno = 0;
-        }
+        // Resolve recipient address first (handle domains)
+        const resolvedRecipient = await this.resolveAddress(client, recipientAddress);
 
         // Calculate amount in smallest units
         const jettonAmount = BigInt(Math.floor(amount * Math.pow(10, decimals)));
@@ -551,8 +683,8 @@ export class WalletService {
             .storeUint(0xf8a7ea5, 32) // op::transfer
             .storeUint(0, 64) // query_id
             .storeCoins(jettonAmount) // amount
-            .storeAddress(Address.parse(recipientAddress)) // destination
-            .storeAddress(Address.parse(recipientAddress)) // response_destination (send excess back to recipient)
+            .storeAddress(resolvedRecipient) // destination
+            .storeAddress(resolvedRecipient) // response_destination (send excess back to recipient)
             .storeBit(0) // no custom payload
             .storeCoins(toNano('0.01')) // forward_ton_amount (for notification)
             .storeBit(1) // store forward payload as ref
@@ -565,7 +697,57 @@ export class WalletService {
             amount: amount,
             decimals: decimals,
             jettonAmount: jettonAmount.toString(),
+            walletType
         });
+
+        let wallet;
+
+        switch (walletType) {
+            case 'v3r2':
+                wallet = client.open(WalletContractV3R2.create({
+                    publicKey: keyPair.publicKey,
+                    workchain: 0,
+                }));
+                break;
+
+            case 'v4r2':
+                wallet = client.open(WalletContractV4.create({
+                    publicKey: keyPair.publicKey,
+                    workchain: 0,
+                }));
+                break;
+
+            case 'highload-v3':
+                // Send using Highload V3 specifics
+                // We send 0.05 TON to the jetton wallet, with the transfer body
+                return await this.sendHighloadTransactionWithPayload(
+                    mnemonic,
+                    jettonWalletAddress,
+                    '0.05', // Attached value for processing
+                    jettonTransferBody,
+                    testnet
+                );
+
+            default:
+                wallet = client.open(WalletContractV4.create({
+                    publicKey: keyPair.publicKey,
+                    workchain: 0,
+                }));
+                break;
+        }
+
+        // Standard Wallet Logic (V3/V4)
+
+        // Get seqno with retry
+        let seqno = 0;
+        try {
+            seqno = await this.withRetry(async () => {
+                return await wallet.getSeqno();
+            });
+        } catch (e) {
+            console.log('Could not get seqno, using 0:', e.message);
+            seqno = 0;
+        }
 
         // Send transfer with retry
         await this.withRetry(async () => {

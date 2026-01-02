@@ -141,8 +141,8 @@ export class TonApiService {
             };
         } catch (error) {
             console.error('Error fetching rates:', error);
-            // Default fallback prices
-            return { ton: { price: 5.5, diff: '0.00%' }, usdt: { price: 1, diff: '0.00%' } };
+            // Default fallback prices - updated to current market rates (Jan 2026)
+            return { ton: { price: 1.80, diff: '0.00%' }, usdt: { price: 1, diff: '0.00%' } };
         }
     }
 
