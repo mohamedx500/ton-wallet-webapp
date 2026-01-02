@@ -1,9 +1,19 @@
 /**
  * TonApiService - Fetches real-time data from TON blockchain
  * Uses TonAPI for balance and transaction history
+ * 
+ * Enhanced with:
+ * - Retry logic with exponential backoff
+ * - Request timeouts
+ * - Rate limiting protection
+ * - Metrics tracking (inspired by ton-wallet-api)
+ * - Structured error handling
  */
 
 import { Address } from '@ton/core';
+import { retryService } from './ApiRequestManager.js';
+import { metrics } from './MetricsService.js';
+import { errorHandler } from './ErrorHandler.js';
 
 export class TonApiService {
     constructor() {
@@ -11,12 +21,14 @@ export class TonApiService {
             mainnet: 'https://tonapi.io/v2',
             testnet: 'https://testnet.tonapi.io/v2',
         };
-        this.apiKey = 'AHTZZ7E34KIKKDYAAAALJKYQO7LDK72FO5LDOFCKEVP5KEUOP56JZB6FMWE4U3JWGMIOO7Q'; // TonAPI Console Key
+        this.apiKey = import.meta.env.VITE_TONAPI_KEY || ''; // TonAPI Console Key from .env
         this.isTestnet = false;
+        this.timeout = 30000; // 30 second timeout
+        this.metricsEnabled = true; // Enable metrics tracking
     }
 
     /**
-     * Helper to perform fetch with headers
+     * Helper to perform fetch with headers, timeout, retry logic, and metrics
      */
     async _fetch(url, options = {}) {
         const headers = {
@@ -24,7 +36,46 @@ export class TonApiService {
             'Content-Type': 'application/json',
             ...options.headers
         };
-        return fetch(url, { ...options, headers });
+
+        const startTime = performance.now();
+        let success = false;
+
+        try {
+            // Use retry service for resilient requests
+            const response = await retryService.execute(async () => {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+                try {
+                    const resp = await fetch(url, {
+                        ...options,
+                        headers,
+                        signal: controller.signal
+                    });
+
+                    if (!resp.ok && resp.status !== 404) {
+                        throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+                    }
+
+                    return resp;
+                } finally {
+                    clearTimeout(timeoutId);
+                }
+            });
+
+            success = true;
+            return response;
+        } catch (error) {
+            // Handle and categorize error
+            const walletError = errorHandler.handle(error, { url });
+            throw walletError;
+        } finally {
+            // Track metrics
+            if (this.metricsEnabled) {
+                const duration = performance.now() - startTime;
+                metrics.recordApiRequest(success, duration);
+            }
+        }
     }
 
     /**
