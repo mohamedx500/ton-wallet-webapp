@@ -12,48 +12,29 @@ interface ActivityTabProps {
 
 export default function ActivityTab({ darkMode, language, activityFilter, setActivityFilter, activities, setSelectedTransaction }: ActivityTabProps) {
     return (
-        <div className="px-6 pb-6 pt-2">
+        <div className="px-5 pb-6 pt-2">
             <div className="flex items-center justify-between mb-4">
-                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                     {language === 'ar' ? 'سجل المعاملات' : 'Transactions'}
                 </h3>
             </div>
 
-            {/* Activity Filter */}
-            <div className="flex gap-2 mb-4">
-                <button
-                    onClick={() => setActivityFilter('all')}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition ${activityFilter === 'all'
-                        ? 'bg-blue-600 text-white'
-                        : darkMode
-                            ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                >
-                    {language === 'ar' ? 'الكل' : 'All'}
-                </button>
-                <button
-                    onClick={() => setActivityFilter('received')}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition ${activityFilter === 'received'
-                        ? 'bg-green-600 text-white'
-                        : darkMode
-                            ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                >
-                    {language === 'ar' ? 'المستلمة' : 'Received'}
-                </button>
-                <button
-                    onClick={() => setActivityFilter('sent')}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition ${activityFilter === 'sent'
-                        ? 'bg-red-600 text-white'
-                        : darkMode
-                            ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                >
-                    {language === 'ar' ? 'المرسلة' : 'Sent'}
-                </button>
+            {/* Activity Filter - Cleaner Look */}
+            <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar">
+                {['all', 'received', 'sent'].map((filter) => (
+                    <button
+                        key={filter}
+                        onClick={() => setActivityFilter(filter)}
+                        className={`px-4 py-2 rounded-xl text-xs font-semibold transition ${activityFilter === filter
+                            ? (darkMode ? 'bg-white text-black' : 'bg-black text-white')
+                            : (darkMode ? 'bg-gray-800 text-gray-400 hover:bg-gray-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200')
+                            }`}
+                    >
+                        {filter === 'all' && (language === 'ar' ? 'الكل' : 'All')}
+                        {filter === 'received' && (language === 'ar' ? 'المستلمة' : 'Received')}
+                        {filter === 'sent' && (language === 'ar' ? 'المرسلة' : 'Sent')}
+                    </button>
+                ))}
             </div>
 
             <div className="space-y-3">
@@ -68,56 +49,76 @@ export default function ActivityTab({ darkMode, language, activityFilter, setAct
                         <div
                             key={idx}
                             onClick={() => setSelectedTransaction(activity)}
-                            className={`p-4 ${darkMode ? 'bg-gray-900 hover:bg-gray-800' : 'bg-gray-50 hover:bg-gray-100'} rounded-xl transition cursor-pointer`}
+                            className={`p-4 rounded-2xl transition cursor-pointer border ${darkMode
+                                ? 'bg-gray-900 border-gray-800 hover:bg-gray-800'
+                                : 'bg-white border-gray-100 hover:bg-gray-50 hover:shadow-sm'
+                                }`}
                         >
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    {/* Colored Icon */}
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${activity.type === 'received'
-                                        ? darkMode ? 'bg-green-950' : 'bg-green-100'
-                                        : darkMode ? 'bg-red-950' : 'bg-red-100'
+                                            ? (darkMode ? 'bg-green-500/10 text-green-400' : 'bg-green-100 text-green-600')
+                                            : (darkMode ? 'bg-red-500/10 text-red-400' : 'bg-red-100 text-red-600')
                                         }`}>
                                         {activity.type === 'received' ? (
-                                            <ArrowDownToLine size={18} className={darkMode ? 'text-green-400' : 'text-green-600'} />
+                                            <ArrowDownToLine size={18} />
                                         ) : (
-                                            <Send size={18} className={darkMode ? 'text-red-400' : 'text-red-600'} />
+                                            <Send size={18} />
                                         )}
                                     </div>
+
                                     <div>
-                                        <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                            {activity.type === 'received'
-                                                ? (language === 'ar' ? 'استلام' : 'Receive')
-                                                : (language === 'ar' ? 'إرسال' : 'Send')} {activity.token}
-                                        </p>
-                                        <div className={`flex items-center gap-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                            <Clock size={12} />
+                                        <div className="flex items-center gap-2">
+                                            <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                {activity.type === 'received'
+                                                    ? (language === 'ar' ? 'استلام' : 'Receive')
+                                                    : (language === 'ar' ? 'إرسال' : 'Send')}
+                                            </p>
+                                            <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${activity.status === 'completed'
+                                                ? (darkMode ? 'bg-green-500/10 text-green-400' : 'bg-green-50 text-green-700')
+                                                : (darkMode ? 'bg-yellow-500/10 text-yellow-400' : 'bg-yellow-50 text-yellow-700')
+                                                }`}>
+                                                {/* simplified status */}
+                                                {activity.token}
+                                            </span>
+                                        </div>
+                                        <div className={`flex items-center gap-2 text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                                             <span>{activity.time}</span>
+                                            <span>•</span>
+                                            <span className="truncate max-w-[100px]">
+                                                {activity.type === 'received'
+                                                    ? (language === 'ar' ? 'من' : 'From')
+                                                    : (language === 'ar' ? 'إلى' : 'To')
+                                                }: {activity.type === 'received' ? activity.from : activity.to}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
-                                <div className="text-left">
-                                    <p className={`font-bold ${activity.type === 'received'
-                                        ? darkMode ? 'text-green-400' : 'text-green-600'
-                                        : darkMode ? 'text-red-400' : 'text-red-600'
-                                        }`}>
-                                        {activity.amount}
-                                    </p>
-                                    <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{activity.token}</p>
-                                </div>
-                            </div>
 
-                            <div className={`flex items-center justify-between pt-2 border-t ${darkMode ? 'border-gray-800' : 'border-gray-200'}`}>
-                                <div className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                    {language === 'ar' ? 'من' : 'From'}: {activity.type === 'received' ? activity.from : activity.to}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                    <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-600'}`}>
-                                        {language === 'ar' ? activity.status : 'Completed'}
-                                    </span>
+                                <div className="text-right">
+                                    <p className={`font-bold text-sm ${activity.type === 'received'
+                                            ? 'text-green-600 dark:text-green-400'
+                                            : 'text-red-600 dark:text-red-400'
+                                        }`}>
+                                        {activity.type === 'received' ? '+' : '-'}{activity.amount}
+                                    </p>
+                                    <p className={`text-xs font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                        {activity.token}
+                                    </p>
                                 </div>
                             </div>
                         </div>
                     ))}
+
+                {activities.length === 0 && (
+                    <div className={`text-center py-10 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 mx-auto mb-3 flex items-center justify-center">
+                            <Clock size={24} className="opacity-50" />
+                        </div>
+                        <p>{language === 'ar' ? 'لا توجد معاملات بعد' : 'No transactions yet'}</p>
+                    </div>
+                )}
             </div>
         </div>
     );

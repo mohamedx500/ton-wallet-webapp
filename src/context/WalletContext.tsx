@@ -27,7 +27,7 @@ interface WalletContextType {
     importWallet: (mnemonic: string[], password: string, name?: string) => Promise<void>; // Added name
     unlockWallet: (password: string) => Promise<boolean>;
     logout: () => void;
-    sendTransaction: (recipient: string, amount: string, password: string, comment?: string) => Promise<any>;
+    sendTransaction: (recipient: string, amount: string, password: string, comment?: string, token?: any) => Promise<any>;
     refreshData: () => Promise<void>;
     resetWallet: () => void;
     getDecryptedSeed: (password: string) => Promise<string[]>;
@@ -89,7 +89,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }, []);
 
     // Helper to refresh data
-    const sendTransaction = async (recipient: string, amount: string, password: string, comment?: string) => {
+    const sendTransaction = async (recipient: string, amount: string, password: string, comment?: string, token?: any) => {
         setIsLoading(true);
         try {
             if (!activeAccount) throw new Error('No active account');
@@ -104,7 +104,24 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             const mnemonic = seedStr.split(' ');
 
             // Send
-            const res = await walletService.sendTransaction(mnemonic, activeAccount.type, recipient, amount, comment || '');
+            let res;
+            if (token && token.symbol !== 'TON') {
+                if (!token.walletAddress) throw new Error(`Missing wallet address for ${token.symbol}`);
+
+                console.log(`Sending Jetton ${token.symbol} (${token.walletAddress}) -> ${recipient}`);
+
+                res = await walletService.sendJettonTransfer(
+                    mnemonic,
+                    activeAccount.type,
+                    token.walletAddress,
+                    recipient,
+                    Number(amount),
+                    token.decimals || 6,
+                    comment || ''
+                );
+            } else {
+                res = await walletService.sendTransaction(mnemonic, activeAccount.type, recipient, amount, comment || '');
+            }
 
             // Refresh balance multiple times to catch confirmation
             setTimeout(refreshData, 3000);  // After 3 seconds
@@ -174,31 +191,41 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             // Add USDT/Others
             let totalUsd = balTon * tonPrice;
 
+            // Helper to check if a symbol is USDT (handles both USD₮ and USDT)
+            const isUsdtSymbol = (sym: string | undefined) =>
+                sym === 'USDT' || sym === 'USD₮' || sym?.toLowerCase() === 'usdt';
+
             jettons.forEach((j: any) => {
                 const amount = j.balance / Math.pow(10, j.jetton.decimals);
                 const symbol = j.jetton.symbol;
-                const price = symbol === 'USDT' ? usdtPrice : 0;
+
+                // Normalize USDT symbol for consistent display
+                const displaySymbol = isUsdtSymbol(symbol) ? 'USD₮' : symbol;
+                const price = isUsdtSymbol(symbol) ? usdtPrice : 0;
                 const val = amount * price;
 
                 totalUsd += val;
 
                 tokenList.push({
                     name: j.jetton.name,
-                    symbol: symbol,
+                    symbol: displaySymbol,
                     balance: amount.toFixed(2),
                     value: `$${val.toFixed(2)}`,
                     icon: j.jetton.image,
                     price: price,
-                    diff: symbol === 'USDT' ? usdtDiff : '0.00%',
-                    rawBalance: amount
+                    diff: isUsdtSymbol(symbol) ? usdtDiff : '0.00%',
+                    rawBalance: amount,
+                    walletAddress: j.wallet_address?.address, // Store jetton wallet address
+                    decimals: j.jetton.decimals || 9
                 });
             });
 
-            // If USDT not found
-            if (!tokenList.find(t => t.symbol === 'USDT')) {
+            // Only add fallback USDT if no USDT variant found
+            const hasUsdt = tokenList.some(t => isUsdtSymbol(t.symbol));
+            if (!hasUsdt) {
                 tokenList.push({
-                    name: 'USD Tether',
-                    symbol: 'USDT',
+                    name: 'Tether USD',
+                    symbol: 'USD₮',
                     balance: '0.00',
                     value: '$0.00',
                     icon: 'https://tether.to/images/logoCircle.png',
@@ -222,9 +249,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                     type = 'sent';
                 }
 
-                // Convert nanoTON to TON (divide by 1e9)
-                const amountInTon = tx.amount ? (tx.amount / 1e9) : 0;
-                const formattedAmount = amountInTon.toFixed(amountInTon < 0.01 ? 4 : 2);
+                // Convert raw amount to formatted string based on decimals
+                const decimals = tx.decimals || 9;
+                const amountVal = tx.amount ? (tx.amount / Math.pow(10, decimals)) : 0;
+
+                // Format with appropriate precision
+                // For small amounts (< 0.01), show more decimals
+                // For USDT (6 decimals), usually 2 is fine, but if small, show more
+                const formattedAmount = amountVal.toFixed(amountVal < 0.01 ? Math.min(decimals, 6) : 2);
 
                 // Parse timestamp (API returns Unix timestamp in seconds)
                 let timeString = 'Unknown';

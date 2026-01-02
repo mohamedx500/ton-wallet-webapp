@@ -34,7 +34,7 @@ export default function TonWallet() {
     // Transaction & Security Flow State
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [passwordAction, setPasswordAction] = useState<'transaction' | 'viewSeed' | 'switchType' | 'viewPrivateKey' | 'swap' | null>(null);
-    const [pendingTx, setPendingTx] = useState<{ recipient: string; amount: string; comment?: string } | null>(null);
+    const [pendingTx, setPendingTx] = useState<{ recipient: string; amount: string; comment?: string; token?: any } | null>(null);
     const [pendingSwap, setPendingSwap] = useState<{ fromToken: string; toToken: string; amount: string; minOutput: string; provider: string; quote: any } | null>(null);
     const [txError, setTxError] = useState('');
     const [decryptedSeed, setDecryptedSeed] = useState<string[]>([]);
@@ -73,8 +73,7 @@ export default function TonWallet() {
 
     // Send Logic
     const handleSendInitiated = (to: string, amt: string, comment?: string, token?: any) => {
-        // We can ignore token for now or pass it to pendingTx if we want to handle jettons later in context
-        setPendingTx({ recipient: to, amount: amt, comment: comment });
+        setPendingTx({ recipient: to, amount: amt, comment: comment, token: token });
         setShowSendModal(false);
         setPasswordAction('transaction');
         setShowPasswordModal(true);
@@ -119,7 +118,7 @@ export default function TonWallet() {
         if (passwordAction === 'transaction') {
             if (!pendingTx) return;
             try {
-                await sendTransaction(pendingTx.recipient, pendingTx.amount, password, pendingTx.comment);
+                await sendTransaction(pendingTx.recipient, pendingTx.amount, password, pendingTx.comment, pendingTx.token);
                 setShowPasswordModal(false);
                 setPendingTx(null);
                 setPasswordAction(null);
@@ -171,38 +170,32 @@ export default function TonWallet() {
             if (!pendingSwap) return;
             setIsSeedLoading(true);
             try {
-                // Import swapService
-                const { swapService } = await import('./services/SwapService.js');
+                // Import the new TypeScript SwapService with proper gas fees
+                const { swapService } = await import('./services/SwapService');
 
-                // Build swap transaction
-                let swapTx: any;
-                if (pendingSwap.provider === 'stonfi') {
-                    swapTx = await swapService.buildStonfiSwapTransaction(
-                        walletAddress,
-                        pendingSwap.fromToken,
-                        pendingSwap.toToken,
-                        pendingSwap.amount,
-                        pendingSwap.minOutput
-                    );
-                } else {
-                    swapTx = await swapService.buildDedustSwapTransaction(
-                        walletAddress,
-                        pendingSwap.fromToken,
-                        pendingSwap.toToken,
-                        pendingSwap.amount,
-                        pendingSwap.minOutput,
-                        pendingSwap.quote?.poolAddress
-                    );
-                }
+                // Build swap transaction using the unified method
+                // This now uses correct gas fees: 0.1 TON instead of 0.3 TON
+                const swapTx = await swapService.buildSwapTransaction(
+                    pendingSwap.provider as 'stonfi' | 'dedust',
+                    pendingSwap.quote,
+                    walletAddress || ''
+                );
 
-                // Execute the swap
-                if (swapTx && swapTx.type === 'jetton_transfer') {
+                console.log('[Swap] Built transaction:', {
+                    type: swapTx.type,
+                    to: swapTx.to,
+                    value: swapTx.value,
+                    provider: pendingSwap.provider
+                });
+
+                // Execute the swap based on transaction type
+                if (swapTx.type === 'jetton_transfer') {
                     // For Jetton swaps, we need to use sendJettonTransfer
-                    // This is more complex - for now show info
+                    // This requires the WalletContext to expose a jetton transfer method
                     const swapInfo = `${pendingSwap.amount} ${pendingSwap.fromToken} → ${pendingSwap.quote.outputAmount} ${pendingSwap.toToken}`;
                     alert(`Jetton-to-Jetton/TON swaps require additional implementation.\n\n${swapInfo}\nProvider: ${pendingSwap.provider === 'stonfi' ? 'STON.fi' : 'DeDust'}`);
-                } else if (swapTx && swapTx.to && swapTx.value) {
-                    // TON -> Jetton swap - send TON to router
+                } else if (swapTx.to && swapTx.value && swapTx.body) {
+                    // TON -> Jetton swap - send TON to router WITH swap payload
                     // Convert nanoTON string to TON with proper decimal handling
                     const valueInNano = BigInt(swapTx.value);
                     const wholeTon = valueInNano / BigInt(1e9);
@@ -210,23 +203,49 @@ export default function TonWallet() {
                     const decimalPart = remainder.toString().padStart(9, '0');
                     const amountInTon = `${wholeTon}.${decimalPart}`.replace(/\.?0+$/, '') || '0';
 
-                    console.log('Swap transaction:', { to: swapTx.to, value: swapTx.value, amountInTon });
+                    console.log('[Swap] Sending swap transaction to DEX router:', {
+                        to: swapTx.to,
+                        valueNano: swapTx.value,
+                        valueTON: amountInTon,
+                        swapAmount: pendingSwap.amount,
+                        expectedOutput: pendingSwap.quote.outputAmount,
+                        hasPayload: !!swapTx.body
+                    });
 
                     if (parseFloat(amountInTon) <= 0) {
                         throw new Error('Invalid swap amount');
                     }
 
-                    await sendTransaction(swapTx.to, amountInTon, password, '');
+                    // Get mnemonic for the transaction
+                    const mnemonic = await getDecryptedSeed(password);
 
-                    alert(`Swap initiated!\n\n${pendingSwap.amount} ${pendingSwap.fromToken} → ${pendingSwap.quote.outputAmount} ${pendingSwap.toToken}\n\nPlease check your transaction history in a few minutes.`);
+                    // Import WalletService and send transaction WITH the swap payload
+                    const { WalletService } = await import('./services/WalletService');
+                    const walletService = new WalletService();
+
+                    // Send transaction with the swap payload (Cell body)
+                    await walletService.sendTransactionWithPayload(
+                        mnemonic,
+                        walletType,
+                        swapTx.to,
+                        amountInTon,
+                        swapTx.body, // The swap payload Cell - THIS IS CRITICAL!
+                        false // mainnet
+                    );
+
+                    alert(`Swap initiated! ✅\n\n${pendingSwap.amount} ${pendingSwap.fromToken} → ${pendingSwap.quote.outputAmount} ${pendingSwap.toToken}\n\nProvider: ${pendingSwap.provider === 'stonfi' ? 'STON.fi' : 'DeDust'}\n\nPlease check your transaction history in a few minutes.`);
+                } else if (swapTx.to && swapTx.value) {
+                    // Fallback: simple transfer without payload (shouldn't happen for swaps)
+                    throw new Error('Swap transaction missing payload - contact support');
                 } else {
-                    throw new Error('Failed to build swap transaction');
+                    throw new Error('Failed to build swap transaction - missing address or value');
                 }
 
                 setShowPasswordModal(false);
                 setPendingSwap(null);
                 setPasswordAction(null);
             } catch (e: any) {
+                console.error('[Swap] Error:', e);
                 setTxError(e.message || 'Swap failed');
             } finally {
                 setIsSeedLoading(false);
