@@ -45,6 +45,54 @@ export {
     errorHandler,
 } from './ErrorHandler.js';
 
+// =============================================================================
+// PRODUCTION-GRADE SERVICES
+// =============================================================================
+
+// Transaction Queue Manager
+export {
+    TransactionQueueManager,
+    createTransactionQueueManager,
+    getTransactionQueueManager,
+} from './queue/TransactionQueueManager';
+
+// Concurrency & Rate Limiting
+export {
+    ConcurrencyManager,
+    TokenBucketRateLimiter,
+    PerUserRateLimiter,
+    ConnectionPool,
+    createConcurrencyManager,
+    getConcurrencyManager,
+} from './ConcurrencyManager';
+
+// Wallet State Manager (Caching)
+export {
+    WalletStateManager,
+    createWalletStateManager,
+    getWalletStateManager,
+} from './WalletStateManager';
+
+// Deposit Monitoring
+export {
+    DepositMonitoringService,
+    createDepositMonitoringService,
+} from './DepositMonitoringService';
+
+// Production Jetton Service
+export {
+    ProductionJettonService,
+    createProductionJettonService,
+    getProductionJettonService,
+} from './ProductionJettonService';
+
+// Wallet Core Service (Unified Interface)
+export {
+    WalletCoreService,
+    createWalletCoreService,
+    getWalletCoreService,
+} from './WalletCoreService';
+
 /**
  * Initialize all services
  * Call this once at app startup

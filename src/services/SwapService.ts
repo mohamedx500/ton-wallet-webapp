@@ -164,21 +164,26 @@ const STONFI_NATIVE_TON = 'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c';
 
 /**
  * DEX Router/Factory addresses
- * V2.2 router from STON.fi API with ConstantProduct and pool creation enabled
+ * Using V1 router which is more battle-tested and stable
  */
-const STONFI_ROUTER_V2 = 'EQBCtlN7Zy96qx-3yH0Yi4V0SNtQ-8RbhYaNs65MC4Hwfq31'; // V2.2 ConstantProduct Router (mainnet)
-const STONFI_ROUTER_V1 = 'EQB3ncyBUTjZUA5EnFKR5_EnOMI9V1tTEAAPaiU71gc4TiUt'; // V1 Router (legacy)
+const STONFI_ROUTER_V1 = 'EQB3ncyBUTjZUA5EnFKR5_EnOMI9V1tTEAAPaiU71gc4TiUt'; // V1 Router (mainnet)
 
 /**
- * pTON wallet address for the V2.2 router
+ * pTON V1 wallet address for the V1 router (for TON -> Jetton swaps)
+ * This is the pTON proxy contract that wraps TON
  */
-const STONFI_PTON_WALLET = 'EQBB_dTiG6u4IIbDT80yirqwmLpwRp7cDGkdrmvQ3Xs_39xM';
+const STONFI_PTON_WALLET_V1 = 'EQARULUYsmJq1RiZ-YiH-IJLcAZUVkVff-KBPwEmmaQGH6aC';
 
 /**
- * STON.fi operation codes
+ * pTON Master V1 address
  */
-const STONFI_SWAP_OP_V2 = 0x6664de2a; // V2 swap operation code
-const STONFI_SWAP_OP_V1 = 0x25938561; // V1 swap operation code (legacy)
+const PTON_V1_MASTER = 'EQCM3B12QK1e4yZSf8GtBRT0aLMNyEsBc_DhVfRRtOEffLez';
+
+/**
+ * STON.fi operation codes (using V1 which is more reliable)
+ */
+const STONFI_SWAP_OP = 0x25938561; // V1 swap operation code
+const STONFI_JETTON_SWAP = 0xf8a7ea5; // Jetton transfer with forward payload
 
 const DEDUST_FACTORY = 'EQBfBWT7X2BHg9tXAxzhz2aKiNTU1tpt5NsiK0uSDW_YAJ67';
 const DEDUST_NATIVE_VAULT = 'EQDa4VOnTYlLvDJ0gZjNYm5PXfSmmtL6Vs6A_CZEtXCNICq_';
@@ -210,7 +215,7 @@ export const DEX_PROVIDERS = {
     STONFI: {
         id: 'stonfi' as const,
         name: 'STON.fi',
-        router: STONFI_ROUTER_V2,
+        router: STONFI_ROUTER_V1,
         apiUrl: 'https://api.ston.fi',
         fee: '0.3%',
     },
@@ -364,7 +369,7 @@ export class SwapService {
 
     /**
      * Get quote from STON.fi API
-     * Uses V2 simulate endpoint for accurate pricing
+     * Uses V1 simulate endpoint which returns pool addresses needed for swaps
      */
     private async getStonfiQuote(
         fromToken: TokenInfo,
@@ -382,58 +387,89 @@ export class SwapService {
                 ? STONFI_NATIVE_TON
                 : toToken.address;
 
-            // Call STON.fi simulate swap API
-            const response = await fetch(
-                `https://api.ston.fi/v1/swap/simulate?` +
-                `offer_address=${fromAddress}&` +
-                `ask_address=${toAddress}&` +
-                `units=${amountUnits}&` +
-                `slippage_tolerance=${this.slippageTolerance}`
-            );
+            // Add timeout to prevent hanging
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-            if (!response.ok) {
-                console.warn(`[SwapService] STON.fi API error: ${response.status}`);
+            try {
+                // Call STON.fi simulate swap API
+                const response = await fetch(
+                    `https://api.ston.fi/v1/swap/simulate?` +
+                    `offer_address=${fromAddress}&` +
+                    `ask_address=${toAddress}&` +
+                    `units=${amountUnits}&` +
+                    `slippage_tolerance=${this.slippageTolerance}`,
+                    { signal: controller.signal }
+                );
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    console.warn(`[SwapService] STON.fi API error: ${response.status}`);
+                    return await this.getEstimatedQuote(fromToken, toToken, amount, 'stonfi');
+                }
+
+                const data = await response.json();
+
+                if (!data.ask_units) {
+                    console.warn('[SwapService] STON.fi returned no ask_units');
+                    return await this.getEstimatedQuote(fromToken, toToken, amount, 'stonfi');
+                }
+
+                const outputAmount = this.fromUnits(data.ask_units, toToken.decimals);
+                const minOutput = this.fromUnits(data.min_ask_units, toToken.decimals);
+                const inputAmount = this.fromUnits(amountUnits, fromToken.decimals);
+
+                // Calculate rate
+                const inputNum = parseFloat(inputAmount);
+                const outputNum = parseFloat(outputAmount);
+                const rate = inputNum > 0 ? (outputNum / inputNum).toFixed(6) : '0';
+
+                // Log API response for debugging
+                console.log('[SwapService] STON.fi simulate response:', {
+                    router: data.router_address,
+                    poolAddress: data.pool_address,
+                    askJettonWallet: data.ask_jetton_wallet,
+                    offerJettonWallet: data.offer_jetton_wallet,
+                });
+
+                return {
+                    provider: 'stonfi',
+                    providerName: 'STON.fi',
+                    fromToken: fromToken.symbol,
+                    toToken: toToken.symbol,
+                    inputAmount,
+                    outputAmount,
+                    minOutputAmount: minOutput,
+                    priceImpact: data.price_impact ? `${(parseFloat(data.price_impact) * 100).toFixed(2)}%` : '< 0.1%',
+                    fee: '0.3%',
+                    feeAmount: data.fee_units ? this.fromUnits(data.fee_units, fromToken.decimals) : undefined,
+                    rate: `1 ${fromToken.symbol} ≈ ${rate} ${toToken.symbol}`,
+                    route: data.route || [fromToken.symbol, toToken.symbol],
+                    poolAddress: data.pool_address, // Used for building transaction
+                    validUntil: Date.now() + 30000, // Valid for 30 seconds
+                    rawData: {
+                        ...data,
+                        // Store wallet addresses for swap building
+                        router_address: data.router_address,
+                        ask_jetton_wallet: data.ask_jetton_wallet,
+                        offer_jetton_wallet: data.offer_jetton_wallet,
+                    },
+                };
+            } catch (error: any) {
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    console.warn('[SwapService] STON.fi request timed out');
+                } else {
+                    console.error('[SwapService] STON.fi quote error:', error);
+                }
                 return await this.getEstimatedQuote(fromToken, toToken, amount, 'stonfi');
             }
-
-            const data = await response.json();
-
-            if (!data.ask_units) {
-                console.warn('[SwapService] STON.fi returned no ask_units');
-                return await this.getEstimatedQuote(fromToken, toToken, amount, 'stonfi');
-            }
-
-            const outputAmount = this.fromUnits(data.ask_units, toToken.decimals);
-            const minOutput = this.fromUnits(data.min_ask_units, toToken.decimals);
-            const inputAmount = this.fromUnits(amountUnits, fromToken.decimals);
-
-            // Calculate rate
-            const inputNum = parseFloat(inputAmount);
-            const outputNum = parseFloat(outputAmount);
-            const rate = inputNum > 0 ? (outputNum / inputNum).toFixed(6) : '0';
-
-            return {
-                provider: 'stonfi',
-                providerName: 'STON.fi',
-                fromToken: fromToken.symbol,
-                toToken: toToken.symbol,
-                inputAmount,
-                outputAmount,
-                minOutputAmount: minOutput,
-                priceImpact: data.price_impact ? `${(parseFloat(data.price_impact) * 100).toFixed(2)}%` : '< 0.1%',
-                fee: '0.3%',
-                feeAmount: data.fee_units ? this.fromUnits(data.fee_units, fromToken.decimals) : undefined,
-                rate: `1 ${fromToken.symbol} ≈ ${rate} ${toToken.symbol}`,
-                route: data.route || [fromToken.symbol, toToken.symbol],
-                validUntil: Date.now() + 30000, // Valid for 30 seconds
-                rawData: data,
-            };
         } catch (error) {
-            console.error('[SwapService] STON.fi quote error:', error);
+            console.error('[SwapService] STON.fi quote error (outer):', error);
             return await this.getEstimatedQuote(fromToken, toToken, amount, 'stonfi');
         }
     }
-
     /**
      * Get quote from DeDust API
      * Queries pools and calculates output using AMM formula
@@ -454,12 +490,24 @@ export class SwapService {
             if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
                 pools = cached.data;
             } else {
-                const response = await fetch('https://api.dedust.io/v2/pools');
-                if (!response.ok) {
-                    throw new Error(`DeDust API error: ${response.status}`);
+                // Add timeout to prevent hanging
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                try {
+                    const response = await fetch('https://api.dedust.io/v2/pools', { signal: controller.signal });
+                    clearTimeout(timeoutId);
+                    if (!response.ok) {
+                        throw new Error(`DeDust API error: ${response.status}`);
+                    }
+                    pools = await response.json();
+                    this.cachedPools.set(cacheKey, { data: pools, timestamp: Date.now() });
+                } catch (fetchError: any) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        console.warn('[SwapService] DeDust request timed out');
+                    }
+                    throw fetchError;
                 }
-                pools = await response.json();
-                this.cachedPools.set(cacheKey, { data: pools, timestamp: Date.now() });
             }
 
             // Find the pool for this pair
@@ -548,7 +596,15 @@ export class SwapService {
         };
 
         try {
-            const response = await fetch('https://tonapi.io/v2/rates?tokens=ton,usdt&currencies=usd');
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout for price fetch
+
+            const response = await fetch('https://tonapi.io/v2/rates?tokens=ton,usdt&currencies=usd', {
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
             if (response.ok) {
                 const data = await response.json();
                 const tonPrice = data.rates?.TON?.prices?.USD || 1.80;
@@ -624,7 +680,8 @@ export class SwapService {
                 fromToken,
                 toToken,
                 inputAmount,
-                minOutput
+                minOutput,
+                quoteData.rawData // Pass rawData for pool addresses
             );
         } else {
             return await this.buildDedustSwapTransaction(
@@ -640,32 +697,44 @@ export class SwapService {
 
     /**
      * Build STON.fi swap transaction
+     * Uses pool addresses from API response when available for accurate routing
      */
     private async buildStonfiSwapTransaction(
         senderAddress: string,
         fromToken: TokenInfo,
         toToken: TokenInfo,
         amount: string,
-        minOutput: string
+        minOutput: string,
+        rawData?: any
     ): Promise<SwapTransaction> {
         console.log('[SwapService] Building STON.fi swap:', {
             senderAddress,
             from: fromToken.symbol,
             to: toToken.symbol,
             amount,
-            minOutput
+            minOutput,
+            hasRawData: !!rawData,
+            askJettonWallet: rawData?.ask_jetton_wallet,
+            offerJettonWallet: rawData?.offer_jetton_wallet,
         });
 
         const amountUnits = this.toUnits(amount, fromToken.decimals);
         const minOutputUnits = this.toUnits(minOutput || '0', toToken.decimals);
 
+        // Use ask_jetton_wallet from API response if available (more accurate)
+        // This is the pool's jetton wallet for the token we want to receive
+        const askJettonWallet = rawData?.ask_jetton_wallet || toToken.address;
+        // For TON swaps, we need the pool's pTON wallet (offer_jetton_wallet from API)
+        const offerJettonWallet = rawData?.offer_jetton_wallet;
+
         if (fromToken.address === 'native') {
             // TON -> Jetton swap
             return this.buildStonfiTonToJettonSwap(
                 senderAddress,
-                toToken.address,
+                askJettonWallet, // Use pool's jetton wallet from API
                 amountUnits,
-                minOutputUnits
+                minOutputUnits,
+                offerJettonWallet // Pool's pTON wallet from API (critical for routing)
             );
         } else if (toToken.address === 'native') {
             // Jetton -> TON swap
@@ -680,7 +749,7 @@ export class SwapService {
             return this.buildStonfiJettonToJettonSwap(
                 senderAddress,
                 fromToken.address,
-                toToken.address,
+                askJettonWallet, // Use pool's jetton wallet from API
                 amountUnits,
                 minOutputUnits
             );
@@ -688,75 +757,67 @@ export class SwapService {
     }
 
     /**
-     * Build STON.fi TON -> Jetton swap (V2 Protocol)
+     * Build STON.fi TON -> Jetton swap (V1 Protocol)
      * 
-     * For V2, we send TON to the pTON wallet address associated with the router.
-     * The pTON wallet wraps the TON and forwards the swap to the router.
+     * For V1, we send TON to the pTON wallet address associated with the pool.
+     * The pTON wallet wraps the TON and the router swaps it for the desired jetton.
      * 
-     * V2 swap flow:
+     * V1 swap flow:
      * 1. Send TON to pTON wallet with swap payload
-     * 2. pTON wallet wraps TON to pTON jetton
-     * 3. pTON jetton is sent to router with swap op
-     * 4. Router swaps pTON for desired jetton and sends to user
+     * 2. pTON wallet wraps TON and forwards to router
+     * 3. Router swaps wrapped TON for desired jetton and sends to user
      * 
      * @param senderAddress - User's wallet address (for receiving output tokens)
-     * @param askJettonAddress - Address of the jetton we want to receive
+     * @param askJettonAddress - Pool's jetton wallet address (from API ask_jetton_wallet)
      * @param offerUnits - Amount of TON to swap (in nanoTON)
      * @param minAskUnits - Minimum amount of output tokens (slippage protection)
+     * @param ptonWalletAddress - Pool's pTON wallet address from API (offer_jetton_wallet)
      */
     private buildStonfiTonToJettonSwap(
         senderAddress: string,
         askJettonAddress: string,
         offerUnits: string,
-        minAskUnits: string
+        minAskUnits: string,
+        ptonWalletAddress?: string // From API offer_jetton_wallet
     ): SwapTransaction {
-        // Calculate deadline: 5 minutes from now
-        const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
-
         // Parse addresses
         const userAddress = Address.parse(senderAddress);
         const askJetton = Address.parse(askJettonAddress);
 
-        // Build SwapAdditionalData (referenced cell)
-        // Contains: minOut, receiverAddress, fwdGas, customPayload
-        const additionalData = beginCell()
-            .storeCoins(BigInt(minAskUnits)) // minOut - minimum output amount
-            .storeAddress(userAddress)        // receiverAddress - where to send output
-            .storeCoins(0n)                   // fwdGas - forward gas for customPayload (0 if no payload)
-            .storeMaybeRef(null)              // customPayload - optional payload after swap
-            .endCell();
+        // Use API-provided pTON wallet if available, otherwise fall back to default
+        // The API's offer_jetton_wallet is the pool-specific pTON wallet that must be used
+        const ptonWallet = ptonWalletAddress || STONFI_PTON_WALLET_V1;
 
-        // Build StonfiSwap message payload (V2 format)
-        // This is sent to the pTON wallet which wraps TON and forwards to router
+        // Build STON.fi V1 swap payload
+        // V1 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr)
         const swapPayload = beginCell()
-            .storeUint(STONFI_SWAP_OP_V2, 32)  // V2 swap operation code: 0x6664de2a
-            .storeAddress(askJetton)           // otherTokenWallet - jetton we want to receive
-            .storeAddress(userAddress)         // refundAddress - where to refund if swap fails
-            .storeAddress(userAddress)         // excessesAddress - where to send excess tokens
-            .storeUint(deadline, 64)           // deadline - UNIX timestamp
-            .storeRef(additionalData)          // additionalData cell reference
+            .storeUint(STONFI_SWAP_OP, 32)     // V1 swap operation code: 0x25938561
+            .storeAddress(askJetton)           // token_wallet - pool's jetton wallet for the token we want
+            .storeCoins(BigInt(minAskUnits))   // min_out - minimum output amount (slippage protection)
+            .storeAddress(userAddress)         // to_address - where to send output tokens
+            .storeUint(1, 1)                   // has_ref_address (1 = yes, for referral but set to user)
+            .storeAddress(userAddress)         // ref_address (referral, using user address)
             .endCell();
 
         // Calculate total value: swap amount + gas fee
-        // Gas for V2 swap is ~0.15-0.25 TON, use 0.3 TON to be safe
+        // V1 swap requires ~0.15-0.2 TON for gas
         const swapAmount = BigInt(offerUnits);
-        const gasFee = toNano('0.3'); // V2 requires more gas
+        const gasFee = toNano('0.25'); // Conservative gas estimate for V1
         const totalValue = swapAmount + gasFee;
 
-        console.log('[SwapService] TON->Jetton swap (V2):', {
-            router: STONFI_ROUTER_V2,
-            ptonWallet: STONFI_PTON_WALLET,
+        console.log('[SwapService] TON->Jetton swap (V1):', {
+            ptonWalletFromAPI: ptonWalletAddress,
+            ptonWalletUsed: ptonWallet,
             swapAmount: swapAmount.toString(),
             gasFee: gasFee.toString(),
             totalValue: totalValue.toString(),
             expectedTotalTON: Number(totalValue) / 1e9,
             minOutput: minAskUnits,
-            deadline: deadline.toString()
         });
 
         return {
             type: 'ton_transfer',
-            to: STONFI_PTON_WALLET, // Send to pTON wallet, NOT the router directly
+            to: ptonWallet, // Send to pool's pTON wallet (from API or fallback)
             value: totalValue.toString(),
             body: swapPayload,
             mode: 3, // PAY_GAS_SEPARATELY + IGNORE_ERRORS
@@ -780,47 +841,35 @@ export class SwapService {
         offerUnits: string,
         minAskUnits: string
     ): SwapTransaction {
-        // Calculate deadline: 5 minutes from now
-        const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
-
         // Parse addresses
         const userAddress = Address.parse(senderAddress);
 
-        // Build SwapAdditionalData (referenced cell)
-        const additionalData = beginCell()
-            .storeCoins(BigInt(minAskUnits)) // minOut
-            .storeAddress(userAddress)        // receiverAddress
-            .storeCoins(0n)                   // fwdGas
-            .storeMaybeRef(null)              // customPayload
-            .endCell();
-
-        // Build V2 swap forward payload
-        // For Jetton->TON, the otherTokenWallet is the pTON wallet
+        // Build V1 swap forward payload for Jetton -> TON
+        // V1 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr)
         const forwardPayload = beginCell()
-            .storeUint(STONFI_SWAP_OP_V2, 32)       // V2 swap operation code
-            .storeAddress(Address.parse(STONFI_PTON_WALLET)) // otherTokenWallet (pTON wallet)
-            .storeAddress(userAddress)              // refundAddress
-            .storeAddress(userAddress)              // excessesAddress
-            .storeUint(deadline, 64)                // deadline
-            .storeRef(additionalData)               // additionalData
+            .storeUint(STONFI_SWAP_OP, 32)     // V1 swap operation code
+            .storeAddress(Address.parse(PTON_V1_MASTER)) // pTON master (we want TON back)
+            .storeCoins(BigInt(minAskUnits))   // min_out - minimum TON to receive
+            .storeAddress(userAddress)         // to_address - where to send TON
+            .storeUint(1, 1)                   // has_ref_address
+            .storeAddress(userAddress)         // ref_address (referral)
             .endCell();
 
-        console.log('[SwapService] Jetton->TON swap (V2):', {
-            router: STONFI_ROUTER_V2,
+        console.log('[SwapService] Jetton->TON swap (V1):', {
+            router: STONFI_ROUTER_V1,
             jettonMaster: offerJettonAddress,
             amount: offerUnits,
             minOutput: minAskUnits,
-            deadline: deadline.toString()
         });
 
         return {
             type: 'jetton_transfer',
             jettonMaster: offerJettonAddress,
-            destination: STONFI_ROUTER_V2,
+            destination: STONFI_ROUTER_V1,
             amount: offerUnits,
-            forwardAmount: toNano('0.25').toString(), // V2 requires more forward gas
+            forwardAmount: toNano('0.2').toString(), // Gas for forward message
             forwardPayload: forwardPayload.toBoc().toString('base64'),
-            gasAmount: toNano('0.35').toString(), // V2 requires more gas
+            gasAmount: toNano('0.3').toString(), // Total gas for jetton transfer + swap
         };
     }
 
@@ -843,48 +892,37 @@ export class SwapService {
         offerUnits: string,
         minAskUnits: string
     ): SwapTransaction {
-        // Calculate deadline: 5 minutes from now
-        const deadline = BigInt(Math.floor(Date.now() / 1000) + 300);
-
         // Parse addresses
         const userAddress = Address.parse(senderAddress);
         const askJetton = Address.parse(askJettonAddress);
 
-        // Build SwapAdditionalData (referenced cell)
-        const additionalData = beginCell()
-            .storeCoins(BigInt(minAskUnits)) // minOut
-            .storeAddress(userAddress)        // receiverAddress
-            .storeCoins(0n)                   // fwdGas
-            .storeMaybeRef(null)              // customPayload
-            .endCell();
-
-        // Build V2 swap forward payload
+        // Build V1 swap forward payload for Jetton -> Jetton
+        // V1 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr)
         const forwardPayload = beginCell()
-            .storeUint(STONFI_SWAP_OP_V2, 32)  // V2 swap operation code
-            .storeAddress(askJetton)           // otherTokenWallet (target jetton)
-            .storeAddress(userAddress)         // refundAddress
-            .storeAddress(userAddress)         // excessesAddress
-            .storeUint(deadline, 64)           // deadline
-            .storeRef(additionalData)          // additionalData
+            .storeUint(STONFI_SWAP_OP, 32)     // V1 swap operation code
+            .storeAddress(askJetton)           // target jetton wallet
+            .storeCoins(BigInt(minAskUnits))   // min_out
+            .storeAddress(userAddress)         // to_address
+            .storeUint(1, 1)                   // has_ref_address
+            .storeAddress(userAddress)         // ref_address (referral)
             .endCell();
 
-        console.log('[SwapService] Jetton->Jetton swap (V2):', {
-            router: STONFI_ROUTER_V2,
+        console.log('[SwapService] Jetton->Jetton swap (V1):', {
+            router: STONFI_ROUTER_V1,
             offerJetton: offerJettonAddress,
             askJetton: askJettonAddress,
             amount: offerUnits,
             minOutput: minAskUnits,
-            deadline: deadline.toString()
         });
 
         return {
             type: 'jetton_transfer',
             jettonMaster: offerJettonAddress,
-            destination: STONFI_ROUTER_V2,
+            destination: STONFI_ROUTER_V1,
             amount: offerUnits,
-            forwardAmount: toNano('0.25').toString(), // V2 requires more forward gas
+            forwardAmount: toNano('0.24').toString(), // Forward gas
             forwardPayload: forwardPayload.toBoc().toString('base64'),
-            gasAmount: toNano('0.4').toString(), // V2 requires more gas for jetton-to-jetton
+            gasAmount: toNano('0.35').toString(), // Total gas
         };
     }
 
@@ -931,6 +969,14 @@ export class SwapService {
 
     /**
      * Build DeDust TON -> Jetton swap
+     * 
+     * Message format (TL-B):
+     * swap#ea06185d query_id:uint64 amount:Coins _:SwapStep swap_params:^SwapParams
+     * 
+     * SwapStep: step#_ pool_addr:MsgAddressInt params:SwapStepParams
+     * SwapStepParams: step_params#_ kind:SwapKind limit:Coins next:(Maybe ^SwapStep)
+     * SwapParams: swap_params#_ deadline:Timestamp recipient_addr:MsgAddressInt referral_addr:MsgAddress 
+     *             fulfill_payload:(Maybe ^Cell) reject_payload:(Maybe ^Cell)
      */
     private buildDedustTonSwap(
         senderAddress: string,
@@ -941,33 +987,51 @@ export class SwapService {
         // DeDust swap operation code
         const SWAP_OP = 0xea06185d;
 
-        // Build swap step
-        const swapStep = beginCell()
-            .storeAddress(Address.parse(poolAddress || DEDUST_FACTORY))
-            .storeUint(0, 1) // swap kind: 0 = exact in
-            .storeCoins(BigInt(minOutputUnits)) // limit (minimum output)
-            .storeMaybeRef(null) // next step
-            .endCell();
+        const userAddress = Address.parse(senderAddress);
+        const pool = Address.parse(poolAddress || DEDUST_FACTORY);
+        const deadline = Math.floor(Date.now() / 1000) + 300; // 5 minutes
 
-        // Build swap params
+        // Build SwapParams (stored as ref)
+        // swap_params#_ deadline:Timestamp recipient_addr:MsgAddressInt referral_addr:MsgAddress 
+        //              fulfill_payload:(Maybe ^Cell) reject_payload:(Maybe ^Cell)
         const swapParams = beginCell()
-            .storeUint(Math.floor(Date.now() / 1000) + 300, 32) // deadline: 5 minutes
-            .storeAddress(Address.parse(senderAddress)) // recipient
-            .storeAddress(null) // referral (optional)
-            .storeMaybeRef(null) // fulfill payload
-            .storeMaybeRef(null) // reject payload
+            .storeUint(deadline, 32)          // deadline: Timestamp (uint32)
+            .storeAddress(userAddress)         // recipient_addr: MsgAddressInt
+            .storeAddress(null)                // referral_addr: MsgAddress (optional)
+            .storeMaybeRef(null)               // fulfill_payload: Maybe ^Cell
+            .storeMaybeRef(null)               // reject_payload: Maybe ^Cell
             .endCell();
 
-        // Build full payload
-        const swapPayload = beginCell()
-            .storeUint(SWAP_OP, 32)
-            .storeRef(swapStep)
-            .storeRef(swapParams)
-            .endCell();
-
+        // Build the full swap message
+        // swap#ea06185d query_id:uint64 amount:Coins _:SwapStep swap_params:^SwapParams
+        // SwapStep is inline: pool_addr:MsgAddressInt params:SwapStepParams
+        // SwapStepParams is inline: kind:SwapKind limit:Coins next:(Maybe ^SwapStep)
         const swapAmount = BigInt(amountUnits);
+
+        const swapPayload = beginCell()
+            .storeUint(SWAP_OP, 32)             // swap#ea06185d
+            .storeUint(0, 64)                   // query_id:uint64
+            .storeCoins(swapAmount)             // amount:Coins (same as TON being sent)
+            // SwapStep inline:
+            .storeAddress(pool)                 // pool_addr:MsgAddressInt
+            // SwapStepParams inline:
+            .storeUint(0, 1)                    // kind:SwapKind (0 = given_in)
+            .storeCoins(BigInt(minOutputUnits)) // limit:Coins (minimum output)
+            .storeMaybeRef(null)                // next:(Maybe ^SwapStep) - no next step
+            // swap_params as ref:
+            .storeRef(swapParams)               // swap_params:^SwapParams
+            .endCell();
+
         const gasFee = GAS_FEES.DEDUST_TON_SWAP;
         const totalValue = swapAmount + gasFee;
+
+        console.log('[SwapService] DeDust TON->Jetton swap:', {
+            poolAddress: poolAddress,
+            swapAmount: swapAmount.toString(),
+            minOutput: minOutputUnits,
+            totalValue: totalValue.toString(),
+            deadline: deadline,
+        });
 
         return {
             type: 'ton_transfer',

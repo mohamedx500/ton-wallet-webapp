@@ -473,11 +473,22 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             accountManager.updateAccount(activeAccount.id, { type: newType, address: wallet.address });
             setAccounts(accountManager.getAccounts());
 
-            // Update State
+            // Clear old data first - this ensures UI shows loading state
+            setBalance('0.00');
+            setTxs([]);
+            setTokens([]);
+            setTotalBalanceUSDT('0.00');
+
+            // Update State with new wallet
             setWalletAddress(wallet.address);
             setWalletType(newType);
             setActiveAccount({ ...activeAccount, type: newType, address: wallet.address });
 
+            // Reset cooldown to force immediate refresh
+            setLastRefresh(0);
+
+            // Small delay to ensure state is updated before refresh
+            await new Promise(resolve => setTimeout(resolve, 100));
             await refreshData();
         } catch (e) {
             throw e;

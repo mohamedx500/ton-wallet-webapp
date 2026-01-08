@@ -97,7 +97,7 @@ export class WalletManager {
     async generateWallet(options) {
         const {
             type,
-            subwalletId = 698983191,
+            subwalletId = 0x10ad, // 4269 for HL3, matches common wallets
             workchain = 0,
             timeout = 3600,
             testnet = false,
@@ -144,7 +144,7 @@ export class WalletManager {
         for (const [type, config] of Object.entries(this.walletTypes)) {
             try {
                 const wallet = await this._createWallet(type, keyPair.publicKey, {
-                    subwalletId: 698983191,
+                    subwalletId: type.includes('highload-v3') ? 0x10ad : 698983191, // Use 4269 for HL3
                     workchain: 0,
                     timeout: 3600,
                 });

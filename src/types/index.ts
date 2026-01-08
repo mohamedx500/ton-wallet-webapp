@@ -313,7 +313,8 @@ export interface GaslessTransactionConfig {
  * Default configuration values
  */
 export const DEFAULT_CONFIG = {
-    SUBWALLET_ID: 698983191,
+    SUBWALLET_ID: 698983191, // For V3R2, V4R2
+    SUBWALLET_ID_HIGHLOAD_V3: 0x10ad, // = 4269, recommended for Highload V3
     HIGHLOAD_TIMEOUT: 3600,
     RETRY_COUNT: 3,
     RETRY_DELAY: 2000,

@@ -780,6 +780,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                 isEstimate: bestQuote.isEstimate,
                 poolAddress: bestQuote.poolAddress,
                 allQuotes: result.allQuotes, // Store all quotes for comparison
+                rawData: bestQuote.rawData, // CRITICAL: Preserve API response data for swap building
             });
 
             // Update selected DEX to match best quote

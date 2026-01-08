@@ -9,6 +9,7 @@ import { mnemonicNew, mnemonicToPrivateKey } from '@ton/crypto';
 import {
     WalletContractV3R2,
     WalletContractV4,
+    WalletContractV5R1,  // Official V5R1 from @ton/ton - generates correct addresses
     TonClient,
     internal,
 } from '@ton/ton';
@@ -210,30 +211,15 @@ export class WalletService {
 
                 case 'v5r1': {
                     try {
-                        console.log('Creating V5R1 wallet...');
+                        console.log('Creating V5R1 wallet using official @ton/ton library...');
 
-                        // V5R1 wallet with proper contract code
-                        const subwalletId = 698983191; // Default subwallet ID for V5
-                        const v5Code = getWalletV5Code();
-
-                        const v5Data = beginCell()
-                            .storeUint(1, 1) // seqno_enabled flag
-                            .storeUint(0, 32) // seqno
-                            .storeUint(subwalletId, 32) // wallet_id
-                            .storeBuffer(keyPair.publicKey, 32) // public_key
-                            .storeBit(false) // extensions dict empty
-                            .endCell();
-
-                        const v5Init = { code: v5Code, data: v5Data };
-                        const v5Address = contractAddress(0, v5Init);
-                        address = v5Address.toString({ bounceable: false, testOnly: testnet });
-
-                        // Create a minimal wallet object for compatibility
-                        // Note: Transaction sending for v5r1 requires proper wallet contract wrapper
-                        wallet = {
-                            address: v5Address,
-                            init: v5Init,
-                        };
+                        // Use official WalletContractV5R1 from @ton/ton library
+                        // This ensures correct address generation matching Tonkeeper, etc.
+                        wallet = WalletContractV5R1.create({
+                            publicKey: keyPair.publicKey,
+                            workchain: 0,
+                        });
+                        address = wallet.address.toString({ bounceable: false, testOnly: testnet });
                         console.log('V5R1 wallet created with address:', address);
                     } catch (error) {
                         console.error('Error creating V5R1 wallet:', error);
@@ -244,30 +230,27 @@ export class WalletService {
 
                 case 'highload-v3': {
                     try {
-                        // Highload V3 wallet with proper contract code
-                        const TIMESTAMP_SIZE_HL = 64;
-                        const TIMEOUT_SIZE_HL = 22;
-                        const subwalletIdHL = 698983191; // Default subwallet ID
-                        const timeoutHL = 3600; // Default timeout
+                        console.log('Creating Highload V3 wallet using HighloadWalletV3.createFromConfig...');
+
+                        // Use 0x10ad (4269) as recommended for HL3 to avoid address conflicts with V3/V4 wallets
+                        // See: https://docs.ton.org/participate/wallets/contracts#highload-wallet-v3
+                        const subwalletIdHL = 0x10ad; // = 4269, recommended for Highload V3
+                        const timeoutHL = 3600; // Default timeout (1 hour)
                         const hl3Code = getHighloadV3Code();
 
-                        const hl3Data = beginCell()
-                            .storeBuffer(keyPair.publicKey, 32)
-                            .storeUint(subwalletIdHL, 32)
-                            .storeUint(0, 1 + 1 + TIMESTAMP_SIZE_HL) // empty old_queries + empty queries + last_clean_time
-                            .storeUint(timeoutHL, TIMEOUT_SIZE_HL)
-                            .endCell();
+                        // Use createFromConfig from our HighloadWalletV3 class (matches official repo)
+                        const hl3Wallet = HighloadWalletV3.createFromConfig(
+                            {
+                                publicKey: keyPair.publicKey,
+                                subwalletId: subwalletIdHL,
+                                timeout: timeoutHL,
+                            },
+                            hl3Code,
+                            0 // workchain
+                        );
 
-                        const hl3Init = { code: hl3Code, data: hl3Data };
-                        const hl3Address = contractAddress(0, hl3Init);
-                        address = hl3Address.toString({ bounceable: false, testOnly: testnet });
-
-                        // Create a minimal wallet object for compatibility
-                        // Note: Transaction sending for highload-v3 requires proper wallet contract wrapper
-                        wallet = {
-                            address: hl3Address,
-                            init: hl3Init,
-                        };
+                        address = hl3Wallet.address.toString({ bounceable: false, testOnly: testnet });
+                        wallet = hl3Wallet;
                         console.log('Highload V3 wallet created with address:', address);
                     } catch (error) {
                         console.error('Error creating Highload V3 wallet:', error);
@@ -306,9 +289,8 @@ export class WalletService {
                 (error.message.includes('contract code') || error.message.includes('Wallet V5 contract code failed to load') || error.message.includes('Highload V3 contract code failed to load'))) {
                 console.warn(`WARNING: ${walletType} wallet creation failed, falling back to V4R2. Error:`, error.message);
                 console.warn(`This means ${walletType} contract code could not be loaded properly.`);
-                // Return the fallback wallet with explicit type indication
                 const fallbackWallet = await this.importWallet(mnemonic, 'v4r2', testnet);
-                fallbackWallet.originalType = walletType; // Track original requested type
+                fallbackWallet.originalType = walletType;
                 fallbackWallet.fallbackReason = 'Contract code load failure';
                 return fallbackWallet;
             }
@@ -473,7 +455,7 @@ export class WalletService {
         console.log('=== HIGHLOAD TRANSACTION WITH PAYLOAD ===');
         console.log('Parameters: recipient=', recipient, 'amount=', amount, 'hasBody=', !!body);
 
-        const SUBWALLET_ID = 698983191;
+        const SUBWALLET_ID = 0x10ad; // = 4269, recommended for Highload V3
         const TIMEOUT = 3600;
 
         try {
@@ -551,7 +533,7 @@ export class WalletService {
         console.log('- testnet:', testnet);
         console.log('================================');
 
-        const SUBWALLET_ID = 698983191;
+        const SUBWALLET_ID = 0x10ad; // = 4269, recommended for Highload V3
         const TIMEOUT = 3600;
 
         try {
