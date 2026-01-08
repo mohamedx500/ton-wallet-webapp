@@ -289,6 +289,10 @@ export class TonApiService {
             const actions = event.actions || [];
 
             for (const action of actions) {
+                // Check for failed status on the action
+                const isFailed = action.status === 'failed';
+                const status = isFailed ? 'failed' : 'completed';
+
                 if (action.type === 'TonTransfer') {
                     const transfer = action.TonTransfer;
 
@@ -310,18 +314,18 @@ export class TonApiService {
 
                     let type = 'outgoing';
                     if (recipientIsMe && !senderIsMe) {
-                        type = 'incoming';
+                        type = 'received'; // Changed from 'incoming' to match UI expectation internally
                     } else if (senderIsMe && !recipientIsMe) {
-                        type = 'outgoing';
+                        type = 'sent'; // Changed from 'outgoing'
                     } else if (senderIsMe && recipientIsMe) {
-                        type = 'outgoing'; // Self transfer
+                        type = 'sent'; // Self transfer
                     }
 
                     // Convert to user-friendly display addresses
                     const fromDisplay = this._toUserFriendlyAddress(senderRaw, senderName, testnet);
                     const toDisplay = this._toUserFriendlyAddress(recipientRaw, recipientName, testnet);
 
-                    console.log(`Transaction: ${type} | From: ${fromDisplay} | To: ${toDisplay}`);
+                    console.log(`Transaction: ${type} | From: ${fromDisplay} | To: ${toDisplay} | Status: ${status}`);
 
                     transactions.push({
                         hash: event.event_id,
@@ -333,6 +337,8 @@ export class TonApiService {
                         toRaw: recipientRaw,
                         timestamp: event.timestamp,
                         comment: transfer.comment || '',
+                        status: status,
+                        token: 'TON'
                     });
                 }
 
@@ -352,18 +358,82 @@ export class TonApiService {
 
                     transactions.push({
                         hash: event.event_id,
-                        type: recipientIsMe ? 'incoming' : 'outgoing',
-                        amount: parseInt(transfer.amount) || 0,
+                        type: recipientIsMe ? 'received' : 'sent',
+                        amount: Number(transfer.amount) || 0,
                         from: fromDisplay,
                         to: toDisplay,
                         fromRaw: senderRaw,
                         toRaw: recipientRaw,
                         timestamp: event.timestamp,
-                        jetton: transfer.jetton?.symbol || 'Token',
+                        jetton: transfer.jetton?.symbol || transfer.jetton?.name || 'Token',
                         decimals: transfer.jetton?.decimals || 9,
                         comment: transfer.comment || '',
+                        status: status,
+                        token: transfer.jetton?.symbol || transfer.jetton?.name || 'Token'
                     });
                 }
+
+                if (action.type === 'JettonSwap') {
+                    const swap = action.JettonSwap;
+                    // Swap details - can be TON or Jetton on either side
+                    // TON uses: ton_in, ton_out (in nanotons)
+                    // Jetton uses: amount_in, amount_out with jetton_master_in/out
+
+                    // Determine input token and amount
+                    let inToken = 'TON';
+                    let inAmount = 0;
+                    let inDecimals = 9;
+
+                    if (swap.ton_in) {
+                        // TON is the input
+                        inToken = 'TON';
+                        inAmount = Number(swap.ton_in) || 0;
+                        inDecimals = 9;
+                    } else if (swap.amount_in) {
+                        // Jetton is the input
+                        inToken = swap.jetton_master_in?.symbol || swap.jetton_master_in?.name || 'Token';
+                        inAmount = Number(swap.amount_in) || 0;
+                        inDecimals = swap.jetton_master_in?.decimals || 9;
+                    }
+
+                    // Determine output token
+                    let outToken = 'TON';
+                    let outAmount = 0;
+                    let outDecimals = 9;
+
+                    if (swap.ton_out) {
+                        outToken = 'TON';
+                        outAmount = Number(swap.ton_out) || 0;
+                        outDecimals = 9;
+                    } else if (swap.amount_out) {
+                        outToken = swap.jetton_master_out?.symbol || swap.jetton_master_out?.name || 'Token';
+                        outAmount = Number(swap.amount_out) || 0;
+                        outDecimals = swap.jetton_master_out?.decimals || 9;
+                    }
+
+                    const routerRaw = swap.router?.address;
+                    const routerName = swap.router?.name;
+                    const routerDisplay = this._toUserFriendlyAddress(routerRaw, routerName, testnet);
+                    const myDisplay = this._toUserFriendlyAddress(myRawAddress, null, testnet);
+
+                    transactions.push({
+                        hash: event.event_id,
+                        type: 'swap',
+                        amount: inAmount,
+                        amountOut: outAmount,
+                        fromToken: inToken,
+                        toToken: outToken,
+                        from: myDisplay,
+                        to: routerDisplay,
+                        timestamp: event.timestamp,
+                        status: status,
+                        token: `${inToken} → ${outToken}`,
+                        decimals: inDecimals,
+                        decimalsOut: outDecimals
+                    });
+                }
+
+
             }
         }
 

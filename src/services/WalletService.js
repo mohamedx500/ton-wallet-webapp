@@ -22,6 +22,8 @@ import {
     SendMode,
 } from '@ton/core';
 import { HighloadWalletV3, HighloadQueryId, QueryIdStore } from '../wallets/highload-v3/index.ts';
+import { atomicQueryIdProvider } from '../utils/AtomicQueryIdProvider.ts';
+import { getStrictDecimals, isStablecoin } from '../config/knownTokens.ts';
 
 // =============================================================================
 // WALLET CONTRACT CODES (Lazy-loaded to prevent module load errors)
@@ -140,6 +142,56 @@ export class WalletService {
         }
 
         throw lastError;
+    }
+
+    /**
+     * Convert a decimal amount string to Jetton units (BigInt)
+     * Uses string manipulation to avoid floating-point precision errors
+     * 
+     * @param {string|number} amount - The amount (e.g., "0.19", "100.5")
+     * @param {number} decimals - Number of decimal places (e.g., 6 for USDT, 9 for TON)
+     * @returns {BigInt} Amount in smallest units
+     * 
+     * Examples:
+     *   toJettonUnits("0.19", 6)  -> 190000n (USDT)
+     *   toJettonUnits("1.5", 9)   -> 1500000000n (TON)
+     *   toJettonUnits("100", 6)   -> 100000000n
+     */
+    toJettonUnits(amount, decimals) {
+        // Convert to string and handle edge cases
+        let amountStr = String(amount).trim();
+
+        // Handle empty or invalid input
+        if (!amountStr || amountStr === '0') {
+            return 0n;
+        }
+
+        // Remove any commas (for formatted numbers like "1,000.50")
+        amountStr = amountStr.replace(/,/g, '');
+
+        // Split by decimal point
+        const parts = amountStr.split('.');
+        const wholePart = parts[0] || '0';
+        let fractionalPart = parts[1] || '';
+
+        // Pad or truncate fractional part to match decimals
+        if (fractionalPart.length < decimals) {
+            // Pad with zeros: "19" -> "190000" for 6 decimals
+            fractionalPart = fractionalPart.padEnd(decimals, '0');
+        } else if (fractionalPart.length > decimals) {
+            // Truncate: "1234567890" -> "123456" for 6 decimals (no rounding)
+            fractionalPart = fractionalPart.slice(0, decimals);
+        }
+
+        // Combine: "0" + "190000" = "0190000" -> "190000"
+        const combined = wholePart + fractionalPart;
+
+        // Remove leading zeros and convert to BigInt
+        const result = BigInt(combined.replace(/^0+/, '') || '0');
+
+        console.log(`[toJettonUnits] ${amount} with ${decimals} decimals = ${result}`);
+
+        return result;
     }
 
     /**
@@ -476,11 +528,13 @@ export class WalletService {
             );
 
             // Build internal message WITH the payload body
+            // IMPORTANT: bounce must be true for jetton transfers
+            // Jetton wallets require bounceable messages
             const internalMessage = internal({
                 to: parsedAddress,
                 value: toNano(numericAmount.toString()),
                 body: body, // Custom Cell payload for swap
-                bounce: false,
+                bounce: true, // Must be true for jetton transfers!
             });
 
             const offsets = [30, 60, 120, 180];
@@ -488,10 +542,10 @@ export class WalletService {
 
             for (const offset of offsets) {
                 const createdAt = Math.floor(Date.now() / 1000) - offset;
-                const now = Date.now();
-                const shift = Math.floor(now / 1000) % 8192;
-                const bitNumber = now % 1023;
-                const queryId = HighloadQueryId.fromShiftAndBitNumber(shift, bitNumber);
+
+                // Use AtomicQueryIdProvider for collision-free query IDs
+                // This prevents duplicate query_id errors under high-frequency usage
+                const queryId = atomicQueryIdProvider.getNextQueryId();
 
                 try {
                     await wallet.sendExternalMessage(keyPair.secretKey, {
@@ -503,7 +557,7 @@ export class WalletService {
                         timeout: TIMEOUT,
                     });
 
-                    console.log('SUCCESS! Swap transaction sent!');
+                    console.log('SUCCESS! Swap transaction sent with queryId:', queryId.getQueryId().toString());
                     return { success: true, seqno: queryId.getQueryId().toString() };
 
                 } catch (error) {
@@ -586,12 +640,10 @@ export class WalletService {
                 const createdAt = Math.floor(Date.now() / 1000) - offset;
                 console.log(`Trying with createdAt offset: ${offset}s (ts=${createdAt})`);
 
-                // Generate a UNIQUE query_id based on current time
-                const now = Date.now();
-                const shift = Math.floor(now / 1000) % 8192;
-                const bitNumber = now % 1023;
-                const queryId = HighloadQueryId.fromShiftAndBitNumber(shift, bitNumber);
-                console.log(`Query ID: shift=${shift}, bitNumber=${bitNumber} (unique: ${queryId.getQueryId()})`);
+                // Use AtomicQueryIdProvider for collision-free query IDs
+                // This prevents duplicate query_id errors under high-frequency usage
+                const queryId = atomicQueryIdProvider.getNextQueryId();
+                console.log(`Query ID generated: ${queryId.getQueryId()} (collision-free)`);
 
                 try {
                     // The key: client.open() returns a proxy that auto-injects provider as first arg
@@ -647,8 +699,59 @@ export class WalletService {
         // Resolve recipient address first (handle domains)
         const resolvedRecipient = await this.resolveAddress(client, recipientAddress);
 
-        // Calculate amount in smallest units
-        const jettonAmount = BigInt(Math.floor(amount * Math.pow(10, decimals)));
+        // Get sender's wallet address for response_destination
+        // We need to derive it from the wallet type and public key
+        let senderAddress;
+        switch (walletType) {
+            case 'v3r2':
+                senderAddress = WalletContractV3R2.create({ publicKey: keyPair.publicKey, workchain: 0 }).address;
+                break;
+            case 'v4r2':
+                senderAddress = WalletContractV4.create({ publicKey: keyPair.publicKey, workchain: 0 }).address;
+                break;
+            case 'v5r1':
+                senderAddress = WalletContractV5R1.create({ publicKey: keyPair.publicKey, workchain: 0 }).address;
+                break;
+            case 'highload-v3':
+                // For highload, we'll derive it from HighloadWalletV3
+                const hl3Code = getHighloadV3Code();
+                senderAddress = HighloadWalletV3.createFromConfig(
+                    { publicKey: keyPair.publicKey, subwalletId: 0x10ad, timeout: 3600 },
+                    hl3Code, 0
+                ).address;
+                break;
+            default:
+                senderAddress = WalletContractV4.create({ publicKey: keyPair.publicKey, workchain: 0 }).address;
+        }
+
+        // ============================================================================
+        // CRITICAL FIX: String-based decimal conversion to avoid floating-point errors
+        // ============================================================================
+        // Problem: 0.19 * 1000000 = 189999.99999999997 (floating point error!)
+        // Solution: Parse the string directly and shift decimal places
+
+        // STRICT DECIMAL ENFORCEMENT: Use hardcoded decimals for known tokens
+        // This prevents Exit Code 47 from UI/API providing wrong decimals
+        const strictDecimals = getStrictDecimals(jettonWalletAddress, decimals);
+        if (strictDecimals !== decimals) {
+            console.warn(`[JettonTransfer] DECIMAL OVERRIDE: Using ${strictDecimals} instead of provided ${decimals} for ${jettonWalletAddress}`);
+        }
+
+        const jettonAmount = this.toJettonUnits(amount.toString(), strictDecimals);
+
+        console.log('[JettonTransfer] Amount conversion:', {
+            input: amount,
+            providedDecimals: decimals,
+            strictDecimals: strictDecimals,
+            jettonUnits: jettonAmount.toString(),
+            isStablecoin: isStablecoin(jettonWalletAddress),
+            expectedForUSDT: strictDecimals === 6 ? `${amount} USDT = ${jettonAmount} micro-USDT` : 'N/A'
+        });
+
+        // Validate: amount must be positive
+        if (jettonAmount <= 0n) {
+            throw new Error('Invalid amount: must be greater than 0');
+        }
 
         // Build forward payload (comment)
         let forwardPayload = beginCell().endCell();
@@ -662,13 +765,13 @@ export class WalletService {
         // Build jetton transfer body
         // TEP-74: https://github.com/ton-blockchain/TEPs/blob/master/text/0074-jettons-standard.md
         const jettonTransferBody = beginCell()
-            .storeUint(0xf8a7ea5, 32) // op::transfer
+            .storeUint(0xf8a7ea5, 32) // op::transfer (correct TEP-74 opcode)
             .storeUint(0, 64) // query_id
-            .storeCoins(jettonAmount) // amount
-            .storeAddress(resolvedRecipient) // destination
-            .storeAddress(resolvedRecipient) // response_destination (send excess back to recipient)
+            .storeCoins(jettonAmount) // amount in smallest units (e.g., micro-USDT for 6 decimals)
+            .storeAddress(resolvedRecipient) // destination (where jettons go)
+            .storeAddress(senderAddress) // response_destination (sender gets excess TON back)
             .storeBit(0) // no custom payload
-            .storeCoins(toNano('0.01')) // forward_ton_amount (for notification)
+            .storeCoins(toNano('0.01')) // forward_ton_amount (0.01 TON for notification)
             .storeBit(1) // store forward payload as ref
             .storeRef(forwardPayload)
             .endCell();
@@ -701,11 +804,12 @@ export class WalletService {
 
             case 'highload-v3':
                 // Send using Highload V3 specifics
-                // We send 0.05 TON to the jetton wallet, with the transfer body
+                // We need enough TON for: gas + forward_ton_amount + jetton wallet processing
+                // 0.1 TON is a safe amount for jetton transfers
                 return await this.sendHighloadTransactionWithPayload(
                     mnemonic,
                     jettonWalletAddress,
-                    '0.05', // Attached value for processing
+                    '0.1', // Attached value for processing (increased from 0.05)
                     jettonTransferBody,
                     testnet
                 );
@@ -739,7 +843,7 @@ export class WalletService {
                 messages: [
                     internal({
                         to: Address.parse(jettonWalletAddress),
-                        value: toNano('0.05'), // Gas for jetton transfer
+                        value: toNano('0.1'), // Gas for jetton transfer (increased from 0.05)
                         body: jettonTransferBody,
                         bounce: true,
                     })

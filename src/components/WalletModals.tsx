@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Copy, ExternalLink, ArrowDownToLine, Send, Check, Eye, EyeOff, Loader2, Share2, Wallet, TriangleAlert, ChevronRight, RefreshCw } from 'lucide-react';
+import { X, Copy, ExternalLink, ArrowDownToLine, Send, Check, Eye, EyeOff, Loader2, Share2, Wallet, TriangleAlert, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface BaseModalProps {
     isOpen: boolean;
@@ -148,21 +148,33 @@ export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMo
                             {tokenTxs.map((tx, i) => (
                                 <div key={i} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.type === 'received'
-                                            ? (darkMode ? 'bg-green-900/30 text-green-500' : 'bg-green-100 text-green-600')
-                                            : (darkMode ? 'bg-red-900/30 text-red-500' : 'bg-red-100 text-red-600')
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.status === 'failed'
+                                            ? (darkMode ? 'bg-red-900/30 text-red-500' : 'bg-red-100 text-red-600')
+                                            : tx.type === 'received'
+                                                ? (darkMode ? 'bg-green-900/30 text-green-500' : 'bg-green-100 text-green-600')
+                                                : tx.type === 'swap'
+                                                    ? (darkMode ? 'bg-blue-900/30 text-blue-500' : 'bg-blue-100 text-blue-600')
+                                                    : (darkMode ? 'bg-gray-700/50 text-gray-400' : 'bg-gray-100 text-gray-600')
                                             }`}>
-                                            {tx.type === 'received' ? <ArrowDownToLine size={18} /> : <Send size={18} />}
+                                            {tx.status === 'failed' ? <AlertCircle size={18} /> :
+                                                tx.type === 'received' ? <ArrowDownToLine size={18} /> :
+                                                    tx.type === 'swap' ? <RefreshCw size={18} /> :
+                                                        <Send size={18} />}
                                         </div>
                                         <div>
                                             <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                                {tx.type === 'received' ? 'Received' : 'Sent'}
+                                                {tx.status === 'failed' ? (language === 'ar' ? 'فشل' : 'Failed') :
+                                                    tx.type === 'received' ? (language === 'ar' ? 'استلام' : 'Received') :
+                                                        tx.type === 'swap' ? (language === 'ar' ? 'مبادلة' : 'Swap') :
+                                                            (language === 'ar' ? 'إرسال' : 'Sent')}
                                             </p>
                                             <p className="text-xs text-gray-500">{tx.time}</p>
                                         </div>
                                     </div>
-                                    <span className={`font-bold ${tx.type === 'received' ? 'text-green-500' : 'text-gray-500'}`}>
-                                        {tx.type === 'received' ? '+' : '-'}{tx.amount} {token.symbol}
+                                    <span className={`font-bold ${tx.status === 'failed' ? 'text-red-500' :
+                                        tx.type === 'received' ? 'text-green-500' : 'text-gray-500'
+                                        }`}>
+                                        {tx.type === 'received' ? '+' : tx.type === 'swap' ? '' : '-'}{tx.amount || '0.00'} {token.symbol}
                                     </span>
                                 </div>
                             ))}
@@ -1215,8 +1227,18 @@ export function PhraseModal({ isOpen, onClose, darkMode, language, seedPhrase, h
 }
 
 // Transaction Modal
+// Transaction Modal
 export function TransactionModal({ transaction, onClose, darkMode, language }: TransactionModalProps) {
     if (!transaction) return null;
+
+    // Helper to determine icon
+    const getIcon = () => {
+        if (transaction.status === 'failed') return <AlertCircle size={28} className={darkMode ? 'text-red-400' : 'text-red-500'} />;
+        if (transaction.type === 'received') return <ArrowDownToLine size={28} className={darkMode ? 'text-green-400' : 'text-green-600'} />;
+        if (transaction.type === 'swap') return <RefreshCw size={28} className={darkMode ? 'text-blue-400' : 'text-blue-600'} />;
+        return <Send size={28} className={darkMode ? 'text-gray-300' : 'text-gray-700'} />;
+    };
+
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center z-50" onClick={onClose}>
             <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-t-[32px] p-6 animate-slide-up shadow-2xl`} onClick={(e) => e.stopPropagation()}>
@@ -1225,15 +1247,11 @@ export function TransactionModal({ transaction, onClose, darkMode, language }: T
                 <div className="text-center mb-8">
                     <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-100'
                         }`}>
-                        {transaction.type === 'received' ? (
-                            <ArrowDownToLine size={28} className={darkMode ? 'text-gray-300' : 'text-gray-700'} />
-                        ) : (
-                            <Send size={28} className={darkMode ? 'text-gray-300' : 'text-gray-700'} />
-                        )}
+                        {getIcon()}
                     </div>
 
                     <h2 className={`text-3xl font-bold mb-1 tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'} dir-ltr`}>
-                        {transaction.amount} <span className="text-xl font-medium text-gray-400">{transaction.token}</span>
+                        {transaction.amount || '0.00'} <span className="text-xl font-medium text-gray-400">{transaction.token}</span>
                     </h2>
 
                     <p className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -1249,9 +1267,11 @@ export function TransactionModal({ transaction, onClose, darkMode, language }: T
                                 {language === 'ar' ? 'الحالة' : 'Status'}
                             </span>
                             <div className="flex items-center gap-1.5">
-                                <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                <div className={`w-2 h-2 rounded-full ${transaction.status === 'failed' ? 'bg-red-500' : 'bg-green-500'}`}></div>
                                 <span className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    {language === 'ar' ? 'مكتمل' : 'Completed'}
+                                    {transaction.status === 'failed'
+                                        ? (language === 'ar' ? 'فشل' : 'Failed')
+                                        : (language === 'ar' ? 'مكتمل' : 'Completed')}
                                 </span>
                             </div>
                         </div>
@@ -1262,7 +1282,7 @@ export function TransactionModal({ transaction, onClose, darkMode, language }: T
                                 {language === 'ar' ? 'الرسوم' : 'Fee'}
                             </span>
                             <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                {transaction.fee} TON
+                                {transaction.fee || '0'} TON
                             </span>
                         </div>
 
@@ -1273,15 +1293,19 @@ export function TransactionModal({ transaction, onClose, darkMode, language }: T
                         <div>
                             <div className="flex justify-between items-center mb-1">
                                 <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                    {transaction.type === 'received' ? (language === 'ar' ? 'من' : 'From') : (language === 'ar' ? 'إلى' : 'To')}
+                                    {transaction.type === 'received'
+                                        ? (language === 'ar' ? 'من' : 'From')
+                                        : transaction.type === 'swap'
+                                            ? (language === 'ar' ? 'المبادل' : 'Router')
+                                            : (language === 'ar' ? 'إلى' : 'To')}
                                 </span>
                             </div>
                             <div className="flex items-center justify-between gap-3">
                                 <p className={`text-sm font-mono break-all ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    {transaction.from}
+                                    {transaction.type === 'received' ? transaction.from : transaction.to}
                                 </p>
                                 <button
-                                    onClick={() => navigator.clipboard.writeText(transaction.from)}
+                                    onClick={() => navigator.clipboard.writeText(transaction.type === 'received' ? transaction.from : transaction.to)}
                                     className={`p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition text-gray-400 hover:text-gray-600`}
                                 >
                                     <Copy size={16} />
@@ -1312,8 +1336,10 @@ export function TransactionModal({ transaction, onClose, darkMode, language }: T
                 </div>
 
                 <div className="flex gap-3">
-                    <button className={`flex-1 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition ${darkMode ? 'bg-gray-800 text-white hover:bg-gray-800/80' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
-                        }`}>
+                    <button
+                        onClick={() => window.open(`https://tonviewer.com/transaction/${transaction.hash}`, '_blank')}
+                        className={`flex-1 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition ${darkMode ? 'bg-gray-800 text-white hover:bg-gray-800/80' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
+                            }`}>
                         <ExternalLink size={18} />
                         <span>{language === 'ar' ? 'المستكشف' : 'Explorer'}</span>
                     </button>

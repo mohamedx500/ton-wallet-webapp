@@ -13,7 +13,7 @@ import NetworkBanner from './components/NetworkBanner';
 
 export default function TonWallet() {
     // Context State
-    const { isLoggedIn, balance, transactions, walletAddress, sendTransaction, logout, isLoading, walletType, getDecryptedSeed, getPrivateKey, switchWalletType, tokens, totalBalanceUSDT, accounts, activeAccount, selectAccount, addAccount, renameAccount, deleteAccount } = useWallet();
+    const { isLoggedIn, balance, transactions, walletAddress, sendTransaction, logout, isLoading, walletType, getDecryptedSeed, getPrivateKey, switchWalletType, tokens, totalBalanceUSDT, accounts, activeAccount, selectAccount, addAccount, renameAccount, deleteAccount, refreshData } = useWallet();
 
     // UI State
     const [activeTab, setActiveTab] = useState('home');
@@ -234,6 +234,12 @@ export default function TonWallet() {
                     );
 
                     alert(`Swap initiated! ✅\n\n${pendingSwap.amount} ${pendingSwap.fromToken} → ${pendingSwap.quote.outputAmount} ${pendingSwap.toToken}\n\nProvider: ${pendingSwap.provider === 'stonfi' ? 'STON.fi' : 'DeDust'}\n\nPlease check your transaction history in a few minutes.`);
+
+                    // Trigger multiple refreshes to catch the transaction confirmation
+                    setTimeout(() => refreshData(), 2000);  // 2 seconds
+                    setTimeout(() => refreshData(), 5000);  // 5 seconds
+                    setTimeout(() => refreshData(), 10000); // 10 seconds
+                    setTimeout(() => refreshData(), 20000); // 20 seconds
                 } else if (swapTx.to && swapTx.value) {
                     // Fallback: simple transfer without payload (shouldn't happen for swaps)
                     throw new Error('Swap transaction missing payload - contact support');

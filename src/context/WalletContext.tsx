@@ -124,9 +124,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             }
 
             // Refresh balance multiple times to catch confirmation
-            setTimeout(refreshData, 3000);  // After 3 seconds
-            setTimeout(refreshData, 10000); // After 10 seconds
-            setTimeout(refreshData, 20000); // After 20 seconds
+            // Use a helper that bypasses cooldown for post-transaction refreshes
+            const forceRefresh = () => {
+                setLastRefresh(0); // Reset cooldown to force the refresh
+                refreshData();
+            };
+            setTimeout(forceRefresh, 2000);  // After 2 seconds (faster initial check)
+            setTimeout(forceRefresh, 5000);  // After 5 seconds
+            setTimeout(forceRefresh, 10000); // After 10 seconds
+            setTimeout(forceRefresh, 20000); // After 20 seconds
             return res;
         } catch (e) {
             throw e;
@@ -241,24 +247,34 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             // 5. Get Transactions
             const txs = await tonApiService.getTransactions(walletAddress);
             const formattedTxs = txs.map((tx: any) => {
-                // Convert 'incoming'/'outgoing' to 'received'/'sent'
-                let type = 'sent';
-                if (tx.type === 'incoming') {
-                    type = 'received';
-                } else if (tx.type === 'outgoing') {
-                    type = 'sent';
+                // Use existing type if valid (from TonApiService update), otherwise map legacy types
+                let type = tx.type;
+                if (type === 'incoming') type = 'received';
+                if (type === 'outgoing') type = 'sent';
+
+                // If status is already set (e.g. 'failed'), preserve it. Otherwise default to 'completed'
+                const status = tx.status || 'completed';
+
+                // Format amount
+                const decimals = tx.decimals || 9;
+                let formattedAmount = '0.00';
+
+                try {
+                    let val = 0;
+                    if (type === 'swap') {
+                        // For swaps, use amountIn
+                        val = tx.amount ? Number(tx.amount) / Math.pow(10, decimals) : 0;
+                    } else {
+                        val = tx.amount ? Number(tx.amount) / Math.pow(10, decimals) : 0;
+                    }
+
+                    if (isNaN(val)) val = 0;
+                    formattedAmount = val.toFixed(val < 0.01 && val > 0 ? Math.min(decimals, 6) : 2);
+                } catch (e) {
+                    formattedAmount = '0.00';
                 }
 
-                // Convert raw amount to formatted string based on decimals
-                const decimals = tx.decimals || 9;
-                const amountVal = tx.amount ? (tx.amount / Math.pow(10, decimals)) : 0;
-
-                // Format with appropriate precision
-                // For small amounts (< 0.01), show more decimals
-                // For USDT (6 decimals), usually 2 is fine, but if small, show more
-                const formattedAmount = amountVal.toFixed(amountVal < 0.01 ? Math.min(decimals, 6) : 2);
-
-                // Parse timestamp (API returns Unix timestamp in seconds)
+                // Parse timestamp
                 let timeString = 'Unknown';
                 if (tx.timestamp) {
                     try {
@@ -271,15 +287,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                     }
                 }
 
+
+
                 return {
                     ...tx,
                     type,
                     amount: formattedAmount,
-                    token: tx.jetton || 'TON',
+                    token: tx.token || (tx.jetton || 'TON'),
                     time: timeString,
-                    from: type === 'received' ? tx.from : tx.to,
+                    from: type === 'received' ? tx.from : tx.to, // Display logic remains similar
                     to: type === 'sent' ? tx.to : tx.from,
-                    status: 'completed'
+                    status: status
                 };
             });
 

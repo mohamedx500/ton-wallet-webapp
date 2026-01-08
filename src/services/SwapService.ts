@@ -189,23 +189,35 @@ const DEDUST_FACTORY = 'EQBfBWT7X2BHg9tXAxzhz2aKiNTU1tpt5NsiK0uSDW_YAJ67';
 const DEDUST_NATIVE_VAULT = 'EQDa4VOnTYlLvDJ0gZjNYm5PXfSmmtL6Vs6A_CZEtXCNICq_';
 
 /**
- * Gas fees for swap operations
- * Based on STON.fi documentation: actual fees are 0.06-0.13 TON
- * We use conservative estimates to ensure transactions succeed
+ * Gas fees for swap operations - "Overpay & Refund" Pattern
+ * ============================================================================
+ * 
+ * Philosophy: Attach MORE TON than needed (overpay), and rely on the smart
+ * contracts to refund unused gas to the response_destination address.
+ * 
+ * These values are INTENTIONALLY OVERESTIMATED for safety.
+ * Actual costs are lower, but the excess is ALWAYS refunded to the user
+ * via Op::Excesses (0xd53276db) messages.
+ * 
+ * Frontend Hint: Listen for incoming messages with op code 0xd53276db
+ * to confirm gas refunds have been received.
  */
 const GAS_FEES = {
-    // TON -> Jetton swap via STON.fi
-    STONFI_TON_TO_JETTON: toNano('0.1'), // 0.1 TON gas (actual: ~0.06-0.09)
-    // Jetton -> TON swap via STON.fi
-    STONFI_JETTON_TO_TON: toNano('0.15'), // Includes forward gas
-    // Jetton -> Jetton swap via STON.fi
-    STONFI_JETTON_TO_JETTON: toNano('0.2'),
-    // Forward amount for jetton transfers
-    STONFI_FORWARD_GAS: toNano('0.08'),
-    // DeDust gas fees
-    DEDUST_TON_SWAP: toNano('0.1'),
-    DEDUST_JETTON_SWAP: toNano('0.15'),
-    DEDUST_FORWARD_GAS: toNano('0.08'),
+    // ========== STON.fi Fees ==========
+    // TON -> Jetton swap (standard is ~0.08, we use 0.25 for safety)
+    STONFI_TON_TO_JETTON: toNano('0.25'),
+    // Jetton -> TON swap (needs more gas for jetton wallet + router)
+    STONFI_JETTON_TO_TON: toNano('0.30'),
+    // Jetton -> Jetton swap (most complex - two jetton wallets)
+    STONFI_JETTON_TO_JETTON: toNano('0.35'),
+    // Forward amount for jetton transfers to router
+    STONFI_FORWARD_GAS: toNano('0.15'),
+
+    // ========== DeDust Fees ==========
+    // DeDust tends to need slightly more due to vault architecture
+    DEDUST_TON_SWAP: toNano('0.30'),
+    DEDUST_JETTON_SWAP: toNano('0.35'),
+    DEDUST_FORWARD_GAS: toNano('0.15'),
 };
 
 /**
@@ -782,42 +794,46 @@ export class SwapService {
     ): SwapTransaction {
         // Parse addresses
         const userAddress = Address.parse(senderAddress);
-        const askJetton = Address.parse(askJettonAddress);
+        const askJettonWallet = Address.parse(askJettonAddress);
 
-        // Use API-provided pTON wallet if available, otherwise fall back to default
-        // The API's offer_jetton_wallet is the pool-specific pTON wallet that must be used
-        const ptonWallet = ptonWalletAddress || STONFI_PTON_WALLET_V1;
+        // STON.fi V1 pTON Wallet (Fixed, Known Reliable Address)
+        // We revert to V1 because V2 routing data is missing from the API for TON inputs.
+        // V1 is battle-tested and we know the correct router proxy address.
+        const ptonWallet = 'EQARULUYsmJq1RiZ-YiH-IJLcAZUVkVff-KBPwEmmaQGH6aC';
+
+        console.log('[SwapService] Building STON.fi V1 TON->Jetton swap:', {
+            ptonWallet,
+            askJettonWallet: askJettonAddress, // CRITICAL: This is the POOL'S jetton wallet (correct)
+            userAddress: senderAddress,
+        });
 
         // Build STON.fi V1 swap payload
-        // V1 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr)
+        // V1 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr) | referral...
         const swapPayload = beginCell()
             .storeUint(STONFI_SWAP_OP, 32)     // V1 swap operation code: 0x25938561
-            .storeAddress(askJetton)           // token_wallet - pool's jetton wallet for the token we want
-            .storeCoins(BigInt(minAskUnits))   // min_out - minimum output amount (slippage protection)
-            .storeAddress(userAddress)         // to_address - where to send output tokens
-            .storeUint(1, 1)                   // has_ref_address (1 = yes, for referral but set to user)
-            .storeAddress(userAddress)         // ref_address (referral, using user address)
+            .storeAddress(askJettonWallet)     // TOKEN_WALLET: Must be the POOL'S jetton wallet (from API)
+            .storeCoins(BigInt(minAskUnits))   // min_out
+            .storeAddress(userAddress)         // to_address - receiving address
+            .storeUint(1, 1)                   // has_ref_address
+            .storeAddress(userAddress)         // ref_address (referral/refund)
             .endCell();
 
         // Calculate total value: swap amount + gas fee
-        // V1 swap requires ~0.15-0.2 TON for gas
+        // V1 requires ~0.25 TON for safe execution
         const swapAmount = BigInt(offerUnits);
-        const gasFee = toNano('0.25'); // Conservative gas estimate for V1
+        const gasFee = GAS_FEES.STONFI_TON_TO_JETTON;
         const totalValue = swapAmount + gasFee;
 
-        console.log('[SwapService] TON->Jetton swap (V1):', {
-            ptonWalletFromAPI: ptonWalletAddress,
-            ptonWalletUsed: ptonWallet,
+        console.log('[SwapService] STON.fi V1 Swap Built:', {
             swapAmount: swapAmount.toString(),
             gasFee: gasFee.toString(),
             totalValue: totalValue.toString(),
             expectedTotalTON: Number(totalValue) / 1e9,
-            minOutput: minAskUnits,
         });
 
         return {
             type: 'ton_transfer',
-            to: ptonWallet, // Send to pool's pTON wallet (from API or fallback)
+            to: ptonWallet,
             value: totalValue.toString(),
             body: swapPayload,
             mode: 3, // PAY_GAS_SEPARATELY + IGNORE_ERRORS
@@ -1025,17 +1041,26 @@ export class SwapService {
         const gasFee = GAS_FEES.DEDUST_TON_SWAP;
         const totalValue = swapAmount + gasFee;
 
+        // ============================================================================
+        // CRITICAL: Always send to Native Vault (EQDa4VOnTYlLvDJ0gZjNYm5PXfSmmtL6Vs6A_CZEtXCNICq_)
+        // Do NOT use pool address or any other dynamic address for TON transfers!
+        // The Native Vault routes the TON to the correct pool.
+        // ============================================================================
+        const destination = DEDUST_NATIVE_VAULT;
+
         console.log('[SwapService] DeDust TON->Jetton swap:', {
             poolAddress: poolAddress,
+            destination: destination, // MUST be Native Vault
             swapAmount: swapAmount.toString(),
-            minOutput: minOutputUnits,
+            gasFee: gasFee.toString(),
             totalValue: totalValue.toString(),
-            deadline: deadline,
+            minOutput: minOutputUnits,
+            deadline: new Date(deadline * 1000).toISOString(),
         });
 
         return {
             type: 'ton_transfer',
-            to: DEDUST_NATIVE_VAULT,
+            to: destination, // STRICT: Always Native Vault for TON swaps
             value: totalValue.toString(),
             body: swapPayload,
             mode: 3,
