@@ -115,35 +115,70 @@ export const TON_TOKENS: Record<string, TokenInfo> = {
         name: 'Toncoin',
         address: 'native',
         decimals: 9,
-        icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png',
+        icon: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc',
     },
     USDT: {
         symbol: 'USDT',
         name: 'Tether USD',
         address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs', // Official USDT on TON
         decimals: 6,
-        icon: 'https://tether.to/images/logoCircle.png',
-    },
-    USDC: {
-        symbol: 'USDC',
-        name: 'USD Coin',
-        address: 'EQC61IQRl0_la95t27xhIpjxZt32vL2r3xQxLu-W9VNmYEIQ',
-        decimals: 6,
-        icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png',
+        icon: 'https://asset.ston.fi/img/EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs/1a87edfee9a28b05578853952e5effb8cc30af1e0fb90043aa2ce19dce490849',
     },
     NOT: {
         symbol: 'NOT',
         name: 'Notcoin',
         address: 'EQAvlWFDxGF2lXm67y4yzC17wYKD9A0guwPkMs1gOsM__NOT',
         decimals: 9,
-        icon: 'https://cache.tonapi.io/imgproxy/4KCMNm34jZLXt0rqeFm4rH-BK4FoK76EVX9r0cCIGDg/rs:fill:200:200:1/g:no/aHR0cHM6Ly9jZG4uam9pbmNvbW11bml0eS54eXovbm90L2xvZ28ucG5n.webp',
+        icon: 'https://asset.ston.fi/img/EQAvlWFDxGF2lXm67y4yzC17wYKD9A0guwPkMs1gOsM__NOT/b16c8af5fa6d49f72af8dc623dc48aa6d142ad4fc30fd779a645000a180922aa',
     },
     DOGS: {
         symbol: 'DOGS',
         name: 'Dogs',
         address: 'EQCvxJy4eG8hyHBFsZ7eePxrRsUQSFE_jpptRAYBmcG_DOGS',
         decimals: 9,
-        icon: 'https://cache.tonapi.io/imgproxy/4K0vW2fG-B3x-Kbp-i_ZC9nQHfO7uP5YJ3r7QoPqhvo/rs:fill:200:200:1/g:no/aHR0cHM6Ly9jZG4uam9pbmNvbW11bml0eS54eXovY2xpY2tlci9kb2dzL2xvZ28ucG5n.webp',
+        icon: 'https://asset.ston.fi/img/EQCvxJy4eG8hyHBFsZ7eePxrRsUQSFE_jpptRAYBmcG_DOGS/503ee166c13ec0d96274ac5336dd2242b9e30f6c60ddeec0b227e9dca0440edf',
+    },
+    CATI: {
+        symbol: 'CATI',
+        name: 'Catizen',
+        address: 'EQD-cvR0Nz6XAyRBvbhz-abTrRC6sI5tvHvvpeQraV9UAAD7', // Catizen mainnet
+        decimals: 9,
+        icon: 'https://asset.ston.fi/img/EQD-cvR0Nz6XAyRBvbhz-abTrRC6sI5tvHvvpeQraV9UAAD7/7177e55473596c552cde4be5b94cc222ee229a49347f652303086b336cf188e8',
+    },
+    STON: {
+        symbol: 'STON',
+        name: 'STON.fi',
+        address: 'EQA2kCVNwVsil2EM2mB0SkXytxCqQjS4mttjDpnXmwG9T6bO', // STON.fi token mainnet
+        decimals: 9,
+        icon: 'https://asset.ston.fi/img/EQA2kCVNwVsil2EM2mB0SkXytxCqQjS4mttjDpnXmwG9T6bO/7c9798ce1e64707fb4cb8f025d4060f66b386ed381b50498e3b88731cedeffe8',
+    },
+    HMSTR: {
+        symbol: 'HMSTR',
+        name: 'Hamster Kombat',
+        address: 'EQAJ8uWd7EBqsmpSWaRdf_I-8R8-XHwh3gsNKhy-UrdrPcUo', // Hamster Kombat mainnet
+        decimals: 9,
+        icon: 'https://asset.ston.fi/img/EQAJ8uWd7EBqsmpSWaRdf_I-8R8-XHwh3gsNKhy-UrdrPcUo/eab9936b63e22ca759f67dc713fd2c1b3bd45590c6298882637cd4511dabaf5a',
+    },
+    MAJOR: {
+        symbol: 'MAJOR',
+        name: 'Major',
+        address: 'EQCuPm01HldiduQ55xaBF_1kaW_WAUy5DHey8suqzU_MAJOR', // Major token mainnet
+        decimals: 9,
+        icon: 'https://asset.ston.fi/img/EQCuPm01HldiduQ55xaBF_1kaW_WAUy5DHey8suqzU_MAJOR/aea6edb39acc18a2958ed78165051844b8d4cec92b860866a25dd7f300a07e50',
+    },
+    JETTON: {
+        symbol: 'JETTON',
+        name: 'JetTon',
+        address: 'EQAQXlWJvGbbFfE8F3oS8s87lIgdovS455IsWFaRdmJetTon', // JetTon mainnet
+        decimals: 9,
+        icon: 'https://asset.ston.fi/img/EQAQXlWJvGbbFfE8F3oS8s87lIgdovS455IsWFaRdmJetTon/8f3d0eaf65c9f877a21f0b102832b431c0df7a6b7788b8df9a57a4d0305320bf',
+    },
+    REDO: {
+        symbol: 'REDO',
+        name: 'Resistance Dog',
+        address: 'EQBZ_cafPyDr5KUTs0aNxh0ZTDhkpEZONmLJA2SNGlLm4Cko', // Resistance Dog mainnet
+        decimals: 9,
+        icon: 'https://asset.ston.fi/img/EQBZ_cafPyDr5KUTs0aNxh0ZTDhkpEZONmLJA2SNGlLm4Cko/88d0249592ca2d167bbd0045754810f33b573193934114d7cc9fd33d150667f3',
     },
 };
 
@@ -600,11 +635,16 @@ export class SwapService {
     ): Promise<SwapQuote> {
         // Try to fetch real-time prices from TonAPI
         let prices: Record<string, number> = {
-            TON: 1.80,   // Default fallback
+            TON: 1.85,   // Default fallback
             USDT: 1.0,
-            USDC: 1.0,
-            NOT: 0.005,
-            DOGS: 0.0003,
+            NOT: 0.0006,
+            DOGS: 0.00005,
+            CATI: 0.06,
+            STON: 0.40,
+            HMSTR: 0.003,
+            MAJOR: 0.13,
+            JETTON: 0.06,
+            REDO: 0.05,
         };
 
         try {

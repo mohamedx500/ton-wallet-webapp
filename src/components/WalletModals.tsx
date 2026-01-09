@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Copy, ExternalLink, ArrowDownToLine, Send, Check, Eye, EyeOff, Loader2, Share2, Wallet, TriangleAlert, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react';
 
 interface BaseModalProps {
@@ -718,7 +718,7 @@ interface SwapModalProps extends BaseModalProps {
 
 export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, tokens, onSwapInitiated }: SwapModalProps) {
     const [fromToken, setFromToken] = useState('TON');
-    const [toToken, setToToken] = useState('USDT');
+    const [toToken, setToToken] = useState('USD₮');
     const [amount, setAmount] = useState('');
     const [selectedDex, setSelectedDex] = useState<'stonfi' | 'dedust'>('stonfi');
     const [showFromPicker, setShowFromPicker] = useState(false);
@@ -726,14 +726,81 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
     const [isLoadingQuote, setIsLoadingQuote] = useState(false);
     const [quote, setQuote] = useState<any>(null);
     const [error, setError] = useState('');
+    const [tokenSearch, setTokenSearch] = useState('');
 
-    const availableTokens = [
-        { symbol: 'TON', name: 'Toncoin', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png', decimals: 9 },
-        { symbol: 'USDT', name: 'Tether USD', icon: 'https://tether.to/images/logoCircle.png', decimals: 6 },
-        { symbol: 'USDC', name: 'USD Coin', icon: 'https://assets.coingecko.com/coins/images/6319/small/usdc.png', decimals: 6 },
-        { symbol: 'NOT', name: 'Notcoin', icon: 'https://cache.tonapi.io/imgproxy/4KCMNm34jZLXt0rqeFm4rH-BK4FoK76EVX9r0cCIGDg/rs:fill:200:200:1/g:no/aHR0cHM6Ly9jZG4uam9pbmNvbW11bml0eS54eXovbm90L2xvZ28ucG5n.webp', decimals: 9 },
-        { symbol: 'DOGS', name: 'Dogs', icon: 'https://cache.tonapi.io/imgproxy/4K0vW2fG-B3x-Kbp-i_ZC9nQHfO7uP5YJ3r7QoPqhvo/rs:fill:200:200:1/g:no/aHR0cHM6Ly9jZG4uam9pbmNvbW11bml0eS54eXovY2xpY2tlci9kb2dzL2xvZ28ucG5n.webp', decimals: 9 },
-    ];
+    // Dynamic token list from STON.fi API
+    const [availableTokens, setAvailableTokens] = useState<Array<{ symbol: string; name: string; icon: string; decimals: number; address: string }>>([]);
+    const [isLoadingTokens, setIsLoadingTokens] = useState(false);
+    const [displayLimit, setDisplayLimit] = useState(50); // Show only 50 initially for performance
+
+    // Load available tokens from STON.fi when modal opens
+    useEffect(() => {
+        if (isOpen && availableTokens.length === 0) {
+            loadAvailableTokens();
+        }
+    }, [isOpen]);
+
+    const loadAvailableTokens = async () => {
+        setIsLoadingTokens(true);
+        try {
+            console.log('[SwapModal] Loading tokens from STON.fi API...');
+            const response = await fetch('https://api.ston.fi/v1/assets');
+
+            if (response.ok) {
+                const data = await response.json();
+
+                if (data.asset_list && Array.isArray(data.asset_list)) {
+                    // Filter tokens - more inclusive to catch all verified tokens:
+                    // 1. Not blacklisted/deprecated
+                    // 2. Has image, symbol, and contract address
+                    // 3. Either has trading activity OR is a known token type (wton, jetton, etc)
+                    const processedTokens = data.asset_list
+                        .filter((a: any) =>
+                            !a.blacklisted &&
+                            !a.deprecated &&
+                            a.image_url &&
+                            a.symbol &&
+                            a.contract_address
+                        )
+                        .sort((a: any, b: any) => {
+                            // Sort by popularity_index (STON.fi's verified popularity metric)
+                            // Then by dex_usd_price as fallback
+                            const aPopularity = a.popularity_index || 0;
+                            const bPopularity = b.popularity_index || 0;
+                            if (aPopularity !== bPopularity) return bPopularity - aPopularity;
+                            return (b.dex_usd_price || 0) - (a.dex_usd_price || 0);
+                        })
+                        .slice(0, 1000) // Top 1000 tokens by popularity
+                        .map((asset: any) => ({
+                            symbol: asset.symbol || 'Unknown',
+                            name: asset.display_name || asset.symbol || 'Unknown',
+                            icon: asset.image_url || 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png',
+                            decimals: asset.decimals || 9,
+                            address: asset.contract_address,
+                        }));
+
+                    console.log('[SwapModal] Loaded', processedTokens.length, 'tokens');
+                    setAvailableTokens(processedTokens);
+                }
+            } else {
+                console.error('[SwapModal] Failed to load tokens:', response.status);
+                // Fallback to minimal list if API fails
+                setAvailableTokens([
+                    { symbol: 'TON', name: 'Toncoin', icon: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc', decimals: 9, address: 'native' },
+                    { symbol: 'USD₮', name: 'Tether USD', icon: 'https://asset.ston.fi/img/EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs/1a87edfee9a28b05578853952e5effb8cc30af1e0fb90043aa2ce19dce490849', decimals: 6, address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs' },
+                ]);
+            }
+        } catch (error) {
+            console.error('[SwapModal] Error loading tokens:', error);
+            // Fallback to minimal list if API fails
+            setAvailableTokens([
+                { symbol: 'TON', name: 'Toncoin', icon: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc', decimals: 9, address: 'native' },
+                { symbol: 'USD₮', name: 'Tether USD', icon: 'https://asset.ston.fi/img/EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs/1a87edfee9a28b05578853952e5effb8cc30af1e0fb90043aa2ce19dce490849', decimals: 6, address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs' },
+            ]);
+        } finally {
+            setIsLoadingTokens(false);
+        }
+    };
 
     const dexProviders = [
         { id: 'stonfi' as const, name: 'STON.fi' },
@@ -803,11 +870,16 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
             // Fallback to approximate prices if SwapService fails
             // Updated to current market rates (Jan 2026)
             const fallbackPrices: Record<string, number> = {
-                TON: 1.80,   // ~$1.80 per TON
+                TON: 1.85,   // ~$1.85 per TON
                 USDT: 1.0,
-                USDC: 1.0,
-                NOT: 0.005,
-                DOGS: 0.0003,
+                NOT: 0.0006,
+                DOGS: 0.00005,
+                CATI: 0.06,
+                STON: 0.40,
+                HMSTR: 0.003,
+                MAJOR: 0.13,
+                JETTON: 0.06,
+                REDO: 0.05,
             };
 
             const fromPrice = fallbackPrices[fromToken] || 1;
@@ -956,12 +1028,19 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                 </button>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 overflow-hidden">
                             <button
                                 onClick={() => { setShowFromPicker(!showFromPicker); setShowToPicker(false); }}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-xl ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-100'} transition`}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-xl flex-shrink-0 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-100'} transition`}
                             >
-                                <img src={fromTokenData?.icon} alt={fromToken} className="w-6 h-6 rounded-full" />
+                                <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                    <img
+                                        src={fromTokenData?.icon}
+                                        alt={fromToken}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }}
+                                    />
+                                </div>
                                 <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{fromToken}</span>
                                 <ArrowDownToLine size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
                             </button>
@@ -972,7 +1051,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                 onChange={(e) => setAmount(e.target.value)}
                                 placeholder="0"
                                 style={{ MozAppearance: 'textfield' }}
-                                className={`flex-1 text-right text-2xl font-bold bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${hasInsufficientBalance
+                                className={`flex-1 min-w-0 text-right text-2xl font-bold bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${hasInsufficientBalance
                                     ? 'text-red-500'
                                     : darkMode ? 'text-white' : 'text-gray-900'
                                     }`}
@@ -983,19 +1062,76 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                     {/* Token Picker - From */}
                     {showFromPicker && (
                         <div className={`rounded-xl mb-2 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
-                            {availableTokens.filter(t => t.symbol !== toToken).map((t) => (
-                                <button
-                                    key={t.symbol}
-                                    onClick={() => { setFromToken(t.symbol); setShowFromPicker(false); setQuote(null); }}
-                                    className={`w-full flex items-center gap-3 p-3 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition`}
-                                >
-                                    <img src={t.icon} alt={t.symbol} className="w-6 h-6 rounded-full" />
-                                    <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{t.symbol}</span>
-                                    <span className={`text-sm ml-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                        {getBalance(t.symbol).toFixed(4)}
-                                    </span>
-                                </button>
-                            ))}
+                            {/* Search Input */}
+                            <div className={`p-2 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                <input
+                                    type="text"
+                                    value={tokenSearch}
+                                    onChange={(e) => setTokenSearch(e.target.value)}
+                                    placeholder={language === 'ar' ? 'بحث عن التوكن...' : 'Search tokens...'}
+                                    className={`w-full px-3 py-2 rounded-lg text-sm outline-none ${darkMode ? 'bg-gray-700 text-white placeholder-gray-400' : 'bg-white text-gray-900 placeholder-gray-400'} border ${darkMode ? 'border-gray-600 focus:border-blue-500' : 'border-gray-200 focus:border-blue-500'}`}
+                                    autoFocus
+                                />
+                            </div>
+                            {/* Loading State or Token List */}
+                            {isLoadingTokens ? (
+                                <div className={`p-6 flex flex-col items-center justify-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <Loader2 size={24} className="animate-spin mb-2" />
+                                    <span className="text-sm">{language === 'ar' ? 'جارٍ التحميل...' : 'Loading tokens...'}</span>
+                                </div>
+                            ) : (
+                                <div className="max-h-48 overflow-y-auto">
+                                    {availableTokens
+                                        .filter(t => t.symbol !== toToken)
+                                        .filter(t => {
+                                            if (!tokenSearch) return true;
+                                            const search = tokenSearch.toLowerCase();
+                                            return t.symbol.toLowerCase().includes(search) || t.name.toLowerCase().includes(search);
+                                        })
+                                        .slice(0, tokenSearch ? 100 : displayLimit) // Show more when searching
+                                        .map((t) => (
+                                            <button
+                                                key={t.address || t.symbol}
+                                                onClick={() => { setFromToken(t.symbol); setShowFromPicker(false); setQuote(null); setTokenSearch(''); }}
+                                                className={`w-full flex items-center gap-3 p-3 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition`}
+                                            >
+                                                <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                                    <img
+                                                        src={t.icon}
+                                                        alt={t.symbol}
+                                                        className="w-full h-full object-cover"
+                                                        onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }}
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col items-start">
+                                                    <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{t.symbol}</span>
+                                                    <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{t.name}</span>
+                                                </div>
+                                                <span className={`text-sm ml-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    {getBalance(t.symbol).toFixed(4)}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    {availableTokens.filter(t => t.symbol !== toToken).filter(t => {
+                                        if (!tokenSearch) return true;
+                                        const search = tokenSearch.toLowerCase();
+                                        return t.symbol.toLowerCase().includes(search) || t.name.toLowerCase().includes(search);
+                                    }).length === 0 && (
+                                            <div className={`p-4 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {language === 'ar' ? 'لا توجد نتائج' : 'No tokens found'}
+                                            </div>
+                                        )}
+                                    {/* Show More Button */}
+                                    {!tokenSearch && availableTokens.filter(t => t.symbol !== toToken).length > displayLimit && (
+                                        <button
+                                            onClick={() => setDisplayLimit(prev => prev + 50)}
+                                            className={`w-full p-2 text-sm ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-gray-100'} transition`}
+                                        >
+                                            {language === 'ar' ? 'عرض المزيد' : 'Show More'} ({displayLimit} / {availableTokens.length})
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -1024,7 +1160,14 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                 onClick={() => { setShowToPicker(!showToPicker); setShowFromPicker(false); }}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-xl ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-100'} transition`}
                             >
-                                <img src={toTokenData?.icon} alt={toToken} className="w-6 h-6 rounded-full" />
+                                <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                    <img
+                                        src={toTokenData?.icon}
+                                        alt={toToken}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }}
+                                    />
+                                </div>
                                 <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{toToken}</span>
                                 <ArrowDownToLine size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
                             </button>
@@ -1043,16 +1186,73 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                     {/* Token Picker - To */}
                     {showToPicker && (
                         <div className={`rounded-xl mb-3 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
-                            {availableTokens.filter(t => t.symbol !== fromToken).map((t) => (
-                                <button
-                                    key={t.symbol}
-                                    onClick={() => { setToToken(t.symbol); setShowToPicker(false); setQuote(null); }}
-                                    className={`w-full flex items-center gap-3 p-3 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition`}
-                                >
-                                    <img src={t.icon} alt={t.symbol} className="w-6 h-6 rounded-full" />
-                                    <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{t.symbol}</span>
-                                </button>
-                            ))}
+                            {/* Search Input */}
+                            <div className={`p-2 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                                <input
+                                    type="text"
+                                    value={tokenSearch}
+                                    onChange={(e) => setTokenSearch(e.target.value)}
+                                    placeholder={language === 'ar' ? 'بحث عن التوكن...' : 'Search tokens...'}
+                                    className={`w-full px-3 py-2 rounded-lg text-sm outline-none ${darkMode ? 'bg-gray-700 text-white placeholder-gray-400' : 'bg-white text-gray-900 placeholder-gray-400'} border ${darkMode ? 'border-gray-600 focus:border-blue-500' : 'border-gray-200 focus:border-blue-500'}`}
+                                    autoFocus
+                                />
+                            </div>
+                            {/* Loading State or Token List */}
+                            {isLoadingTokens ? (
+                                <div className={`p-6 flex flex-col items-center justify-center ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                    <Loader2 size={24} className="animate-spin mb-2" />
+                                    <span className="text-sm">{language === 'ar' ? 'جارٍ التحميل...' : 'Loading tokens...'}</span>
+                                </div>
+                            ) : (
+                                <div className="max-h-48 overflow-y-auto">
+                                    {availableTokens
+                                        .filter(t => t.symbol !== fromToken)
+                                        .filter(t => {
+                                            if (!tokenSearch) return true;
+                                            const search = tokenSearch.toLowerCase();
+                                            return t.symbol.toLowerCase().includes(search) || t.name.toLowerCase().includes(search);
+                                        })
+                                        .slice(0, tokenSearch ? 100 : displayLimit) // Show more when searching
+                                        .map((t) => (
+                                            <button
+                                                key={t.address || t.symbol}
+                                                onClick={() => { setToToken(t.symbol); setShowToPicker(false); setQuote(null); setTokenSearch(''); }}
+                                                className={`w-full flex items-center gap-3 p-3 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition`}
+                                            >
+                                                <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                                    <img
+                                                        src={t.icon}
+                                                        alt={t.symbol}
+                                                        className="w-full h-full object-cover"
+                                                        onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }}
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col items-start">
+                                                    <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{t.symbol}</span>
+                                                    <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{t.name}</span>
+                                                </div>
+                                            </button>
+                                        ))}
+                                    {availableTokens.filter(t => t.symbol !== fromToken).filter(t => {
+                                        if (!tokenSearch) return true;
+                                        const search = tokenSearch.toLowerCase();
+                                        return t.symbol.toLowerCase().includes(search) || t.name.toLowerCase().includes(search);
+                                    }).length === 0 && (
+                                            <div className={`p-4 text-center ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {language === 'ar' ? 'لا توجد نتائج' : 'No tokens found'}
+                                            </div>
+                                        )}
+                                    {/* Show More Button */}
+                                    {!tokenSearch && availableTokens.filter(t => t.symbol !== fromToken).length > displayLimit && (
+                                        <button
+                                            onClick={() => setDisplayLimit(prev => prev + 50)}
+                                            className={`w-full p-2 text-sm ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-gray-100'} transition`}
+                                        >
+                                            {language === 'ar' ? 'عرض المزيد' : 'Show More'} ({displayLimit} / {availableTokens.length})
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -1133,7 +1333,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                     </button>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
 
