@@ -221,10 +221,76 @@ export class WalletService {
         // Check if it is a domain
         if (typeof input === 'string' && input.toLowerCase().endsWith('.ton')) {
             console.log(`Resolving DNS: ${input}`);
-            const resolved = await client.dns.getWalletAddress(input);
-            if (!resolved) throw new Error(`Could not resolve domain: ${input}`);
-            console.log(`Resolved: ${resolved.toString()}`);
-            return resolved;
+            try {
+                // Use TonAPI DNS resolution endpoint with retry logic
+                const apiKey = import.meta.env.VITE_TONAPI_KEY;
+                const endpoint = client.parameters.endpoint.includes('testnet')
+                    ? 'https://testnet.tonapi.io'
+                    : 'https://tonapi.io';
+
+                const headers = {
+                    'Content-Type': 'application/json',
+                };
+                if (apiKey) {
+                    headers['Authorization'] = `Bearer ${apiKey}`;
+                }
+
+                // Retry logic for rate limiting
+                let lastError;
+                const maxRetries = 3;
+
+                for (let attempt = 0; attempt < maxRetries; attempt++) {
+                    try {
+                        const response = await fetch(`${endpoint}/v2/dns/${encodeURIComponent(input)}/resolve`, {
+                            headers
+                        });
+
+                        if (!response.ok) {
+                            if (response.status === 429) {
+                                // Rate limited - wait and retry
+                                const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+                                console.log(`Rate limited (429), retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+                                await this.sleep(delay);
+                                lastError = new Error(`Rate limited by TonAPI. ${apiKey ? 'Your API key may need upgrading.' : 'Consider adding a VITE_TONAPI_KEY to .env for higher limits.'}`);
+                                continue; // Retry
+                            }
+                            if (response.status === 404) {
+                                throw new Error(`Domain "${input}" not found. Please verify the domain exists and has a wallet address configured.`);
+                            }
+                            throw new Error(`DNS resolution failed with status ${response.status}`);
+                        }
+
+                        const data = await response.json();
+
+                        // TonAPI returns the wallet address in data.wallet.address
+                        if (!data.wallet || !data.wallet.address) {
+                            throw new Error(`Domain "${input}" exists but has no wallet address configured.`);
+                        }
+
+                        const resolved = Address.parse(data.wallet.address);
+                        console.log(`Resolved ${input} -> ${resolved.toString()}`);
+                        return resolved;
+
+                    } catch (error) {
+                        // If it's a non-retryable error, throw immediately
+                        if (!error.message.includes('Rate limited')) {
+                            throw error;
+                        }
+                        lastError = error;
+                    }
+                }
+
+                // All retries exhausted
+                throw lastError;
+
+            } catch (error) {
+                console.error('DNS resolution error:', error);
+                // Re-throw with cleaner message
+                if (error.message.includes('Domain') || error.message.includes('Rate limited')) {
+                    throw error; // Already has good message
+                }
+                throw new Error(`Could not resolve domain ${input}: ${error.message}`);
+            }
         }
 
         // Standard address parsing

@@ -152,7 +152,8 @@ export class TonApiService {
     async getJettons(address, testnet = false) {
         try {
             const endpoint = this.getEndpoint(testnet);
-            const response = await this._fetch(`${endpoint}/accounts/${encodeURIComponent(address)}/jettons`);
+            // Add currencies=usd to get price data for jettons
+            const response = await this._fetch(`${endpoint}/accounts/${encodeURIComponent(address)}/jettons?currencies=usd`);
 
             if (!response.ok) {
                 if (response.status === 404) return [];

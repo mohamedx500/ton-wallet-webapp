@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Copy, ExternalLink, ArrowDownToLine, Send, Check, Eye, EyeOff, Loader2, Share2, Wallet, TriangleAlert, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react';
+import { TON_TOKENS } from '../services/SwapService';
 
 interface BaseModalProps {
     isOpen: boolean;
@@ -62,7 +63,25 @@ export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMo
     if (!isOpen || !token) return null;
 
     // Filter transactions for this token
-    const tokenTxs = transactions.filter(tx => tx.token === token.symbol || (token.symbol === 'TON' && !tx.token));
+    // Include: regular transfers, swaps involving this token (either from or to), deposits, and withdrawals
+    const tokenTxs = transactions.filter(tx => {
+        // Regular token transfers (sent/received)
+        if (tx.token === token.symbol || (token.symbol === 'TON' && !tx.token)) {
+            return true;
+        }
+
+        // Swap transactions - include if token is either input or output
+        if (tx.type === 'swap') {
+            return tx.fromToken === token.symbol || tx.toToken === token.symbol;
+        }
+
+        // Deposit/Withdrawal - check jetton field as well
+        if (tx.jetton === token.symbol) {
+            return true;
+        }
+
+        return false;
+    });
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 pointer-events-auto" onClick={onClose}>
@@ -327,9 +346,14 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
     };
     const handleBack = () => setStep(prev => prev - 1);
 
-    // Default to TON if nothing selected or simplify
-    // Default to TON if nothing selected or simplify
-    const currentAsset = selectedAsset || { symbol: 'TON', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png', balance: '0.00' };
+    // Default to TON if nothing selected, get the actual TON balance from tokens
+    const tonToken = tokens.find(t => t.symbol === 'TON');
+    const currentAsset = selectedAsset || {
+        symbol: 'TON',
+        icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png',
+        balance: tonToken?.balance || '0.00',
+        price: tonToken?.price || 0
+    };
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -439,9 +463,12 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
                                     <label className={`block text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}>
                                         {language === 'ar' ? 'المبلغ' : 'Amount'}
                                     </label>
-                                    <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                        Max: {selectedAsset ? selectedAsset.balance : '...'}
-                                    </span>
+                                    <button
+                                        onClick={() => setAmount(currentAsset.balance || '0')}
+                                        className={`text-xs font-semibold ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'} transition-colors cursor-pointer`}
+                                    >
+                                        Max: {currentAsset.balance}
+                                    </button>
                                 </div>
                                 <div className="relative">
                                     <input
@@ -718,7 +745,7 @@ interface SwapModalProps extends BaseModalProps {
 
 export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, tokens, onSwapInitiated }: SwapModalProps) {
     const [fromToken, setFromToken] = useState('TON');
-    const [toToken, setToToken] = useState('USD₮');
+    const [toToken, setToToken] = useState('USDT');
     const [amount, setAmount] = useState('');
     const [selectedDex, setSelectedDex] = useState<'stonfi' | 'dedust'>('stonfi');
     const [showFromPicker, setShowFromPicker] = useState(false);
@@ -807,7 +834,25 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
         { id: 'dedust' as const, name: 'DeDust' },
     ];
 
-    const getToken = (symbol: string) => availableTokens.find(t => t.symbol === symbol);
+    const getToken = (symbol: string) => {
+        // First try to find in availableTokens (from API)
+        const token = availableTokens.find(t => t.symbol === symbol);
+        if (token) return token;
+
+        // Fallback to TON_TOKENS from SwapService
+        const fallbackToken = TON_TOKENS[symbol];
+        if (fallbackToken) {
+            return {
+                symbol: fallbackToken.symbol,
+                name: fallbackToken.name,
+                icon: fallbackToken.icon,
+                decimals: fallbackToken.decimals,
+                address: fallbackToken.address
+            };
+        }
+
+        return undefined;
+    };
 
     const getBalance = (symbol: string) => {
         const token = tokens.find(t => t.symbol === symbol);
@@ -958,8 +1003,21 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
 
     const handleMaxClick = () => {
         const balance = getBalance(fromToken);
-        // For TON, leave some for gas
-        const max = fromToken === 'TON' ? Math.max(0, balance - 0.5) : balance;
+
+        // Calculate fee based on swap direction
+        let fee = 0;
+        if (fromToken === 'TON') {
+            // TON -> Jetton swap: need to reserve gas (0.25 TON) + small buffer (0.05)
+            fee = 0.30; // Conservative estimate: 0.25 for swap + 0.05 buffer
+        } else if (toToken === 'TON') {
+            // Jetton -> TON swap: gas is paid from balance after swap, so can use full jetton balance
+            fee = 0;
+        } else {
+            // Jetton -> Jetton swap: no TON deduction needed from jetton balance
+            fee = 0;
+        }
+
+        const max = Math.max(0, balance - fee);
         setAmount(max.toString());
     };
 

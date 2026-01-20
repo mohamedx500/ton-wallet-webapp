@@ -207,7 +207,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
                 // Normalize USDT symbol for consistent display
                 const displaySymbol = isUsdtSymbol(symbol) ? 'USD₮' : symbol;
-                const price = isUsdtSymbol(symbol) ? usdtPrice : 0;
+
+                // Get price from jetton metadata (TonAPI includes rates in jetton response)
+                //The rates are available in j.price or we fetch from rates endpoint
+                let price = 0;
+                let diff = '0.00%';
+
+                if (isUsdtSymbol(symbol)) {
+                    price = usdtPrice;
+                    diff = usdtDiff;
+                } else if (j.price) {
+                    // TonAPI provides price info in the jetton balance response
+                    price = j.price.prices?.USD || j.price.value || 0;
+                    diff = j.price.diff_24h?.USD || '0.00%';
+                }
+
                 const val = amount * price;
 
                 totalUsd += val;
@@ -219,7 +233,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                     value: `$${val.toFixed(2)}`,
                     icon: j.jetton.image,
                     price: price,
-                    diff: isUsdtSymbol(symbol) ? usdtDiff : '0.00%',
+                    diff: diff,
                     rawBalance: amount,
                     walletAddress: j.wallet_address?.address, // Store jetton wallet address
                     decimals: j.jetton.decimals || 9
