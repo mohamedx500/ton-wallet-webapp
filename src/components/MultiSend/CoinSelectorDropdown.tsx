@@ -81,10 +81,11 @@ export function useWalletCoins(): CoinInfo[] {
             const coin: CoinInfo = {
                 symbol: sym === 'USDT' ? 'USDT' : token.symbol,
                 name: token.name || sym,
-                masterAddress: token.walletAddress || null,
+                masterAddress: token.masterAddress || null,              // Jetton Master Contract address
                 decimals: token.decimals || 9,
                 isNative: false,
                 icon: token.icon || undefined,
+                jettonWalletAddress: token.walletAddress || undefined,   // User's Jetton Wallet address (pre-fetched)
             };
             coins.push(coin);
         }

@@ -256,12 +256,18 @@ async function buildTransferMessage(
     } else {
         // ── Jetton (TEP-74) transfer ─────────────────────────────
         // CRITICAL: `to` must be the sender's Jetton Wallet, NOT the recipient
-        const jettonWalletAddr = await resolveJettonWalletAddress(
-            senderAddress,
-            row.coin.masterAddress!,
-            network,
-            jettonCache
-        );
+        // Prioritize pre-fetched address to bypass redundant API call
+        let jettonWalletAddr = row.coin.jettonWalletAddress;
+
+        if (!jettonWalletAddr) {
+            if (!row.coin.masterAddress) throw new Error("Missing Jetton Master Address");
+            jettonWalletAddr = await resolveJettonWalletAddress(
+                senderAddress,
+                row.coin.masterAddress,
+                network,
+                jettonCache
+            );
+        }
 
         const jettonAmount = parseAmount(row.amount, row.coin.decimals);
         const jettonBody = buildJettonPayload(

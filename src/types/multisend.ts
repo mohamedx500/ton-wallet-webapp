@@ -28,6 +28,8 @@ export interface CoinInfo {
     icon?: string;
     /** Whether this is native TON (not a Jetton) */
     isNative: boolean;
+    /** Pre-fetched sender's Jetton wallet address (from TonAPI). Bypasses redundant API call in MultiSendService. */
+    jettonWalletAddress?: string;
 }
 
 /** The default native TON coin */

@@ -3,16 +3,72 @@
  *
  * Main wallet service providing transaction sending functionality
  * for all wallet types (v3r1, v3r2, v4r2, v5r1, highload-v3).
+ * Also provides mnemonic generation, wallet import, and key export.
  */
 
-import { mnemonicToPrivateKey } from '@ton/crypto';
-import { WalletContractV3R1 } from '../wallets/v3r1/V3R1WalletService';
-import { WalletContractV3R2 } from '../wallets/v3r2/V3R2WalletService';
-import { WalletContractV4R2 } from '../wallets/v4r2/V4R2WalletService';
-import { WalletContractV5R1 } from '../wallets/v5r1/V5R1WalletService';
-import { HighloadWalletV3Service } from '../wallets/v3r2/HighloadWalletV3Service';
+import { mnemonicNew, mnemonicToPrivateKey } from '@ton/crypto';
+import { V3R1WalletService } from '../wallets/v3r1/V3R1WalletService';
+import { V3R2WalletService } from '../wallets/v3r2/V3R2WalletService';
+import { V4R2WalletService } from '../wallets/v4r2/V4R2WalletService';
+import { V5R1WalletService } from '../wallets/v5r1/V5R1WalletService';
+import { HighloadWalletV3Service } from '../wallets/highload-v3';
+import type { NetworkType } from '../types';
+
+/** Convert the legacy boolean `testnet` param to a NetworkType string */
+function toNetwork(testnet: boolean): NetworkType {
+    return testnet ? 'testnet' : 'mainnet';
+}
 
 export class WalletService {
+    /**
+     * Generate a new 24-word mnemonic
+     */
+    async generateMnemonic(): Promise<string[]> {
+        return mnemonicNew(24);
+    }
+
+    /**
+     * Import wallet from mnemonic and wallet type.
+     * Returns the wallet address.
+     */
+    async importWallet(
+        mnemonic: string[],
+        walletType: string
+    ): Promise<{ address: string }> {
+        let walletService: any;
+
+        switch (walletType) {
+            case 'v3r1':
+                walletService = new V3R1WalletService();
+                break;
+            case 'v3r2':
+                walletService = new V3R2WalletService();
+                break;
+            case 'v4r2':
+                walletService = new V4R2WalletService();
+                break;
+            case 'v5r1':
+                walletService = new V5R1WalletService();
+                break;
+            case 'highload-v3':
+                walletService = new HighloadWalletV3Service();
+                break;
+            default:
+                throw new Error(`Unsupported wallet type: ${walletType}`);
+        }
+
+        const walletInfo = await walletService.createFromMnemonic(mnemonic);
+        return { address: walletInfo.address };
+    }
+
+    /**
+     * Get the private key as a hex string from a mnemonic
+     */
+    async getPrivateKey(mnemonic: string[]): Promise<string> {
+        const keyPair = await mnemonicToPrivateKey(mnemonic);
+        return keyPair.secretKey.toString('hex');
+    }
+
     /**
      * Send TON transfer
      */
@@ -27,22 +83,23 @@ export class WalletService {
         try {
             const keyPair = await mnemonicToPrivateKey(mnemonic);
             let walletService: any;
+            const network = toNetwork(testnet);
 
             switch (walletType) {
                 case 'v3r1':
-                    walletService = new WalletContractV3R1(testnet);
+                    walletService = new V3R1WalletService(network);
                     break;
                 case 'v3r2':
-                    walletService = new WalletContractV3R2(testnet);
+                    walletService = new V3R2WalletService(network);
                     break;
                 case 'v4r2':
-                    walletService = new WalletContractV4R2(testnet);
+                    walletService = new V4R2WalletService(network);
                     break;
                 case 'v5r1':
-                    walletService = new WalletContractV5R1(testnet);
+                    walletService = new V5R1WalletService(network);
                     break;
                 case 'highload-v3':
-                    walletService = new HighloadWalletV3Service(testnet);
+                    walletService = new HighloadWalletV3Service(network);
                     break;
                 default:
                     throw new Error(`Unsupported wallet type: ${walletType}`);
@@ -72,22 +129,23 @@ export class WalletService {
         try {
             const keyPair = await mnemonicToPrivateKey(mnemonic);
             let walletService: any;
+            const network = toNetwork(testnet);
 
             switch (walletType) {
                 case 'v3r1':
-                    walletService = new WalletContractV3R1(testnet);
+                    walletService = new V3R1WalletService(network);
                     break;
                 case 'v3r2':
-                    walletService = new WalletContractV3R2(testnet);
+                    walletService = new V3R2WalletService(network);
                     break;
                 case 'v4r2':
-                    walletService = new WalletContractV4R2(testnet);
+                    walletService = new V4R2WalletService(network);
                     break;
                 case 'v5r1':
-                    walletService = new WalletContractV5R1(testnet);
+                    walletService = new V5R1WalletService(network);
                     break;
                 case 'highload-v3':
-                    walletService = new HighloadWalletV3Service(testnet);
+                    walletService = new HighloadWalletV3Service(network);
                     break;
                 default:
                     throw new Error(`Unsupported wallet type: ${walletType}`);

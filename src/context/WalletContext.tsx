@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-// @ts-ignore
 import { WalletService } from '../services/WalletService';
 // @ts-ignore
 import { SecurityService } from '../services/SecurityService';
@@ -233,7 +232,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                     price: price,
                     diff: diff,
                     rawBalance: amount,
-                    walletAddress: j.wallet_address?.address, // Store jetton wallet address
+                    walletAddress: j.wallet_address?.address, // User's jetton wallet address
+                    masterAddress: j.jetton.address,          // Jetton master contract address
                     decimals: j.jetton.decimals || 9
                 });
             });
