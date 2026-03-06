@@ -20,5 +20,12 @@ export default defineConfig({
             '@': path.resolve(__dirname, './src'),
         },
     },
+    build: {
+        sourcemap: false,
+        chunkSizeWarningLimit: 1000,
+    },
+    esbuild: {
+        drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : [],
+    },
     base: './',
 });

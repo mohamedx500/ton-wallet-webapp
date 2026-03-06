@@ -1,5 +1,5 @@
 /**
- * Core Type Definitions for the Universal TON Wallet System
+ * Core Type Definitions for the Decentralized wallet system
  * 
  * This file contains all shared types used across the wallet system.
  */

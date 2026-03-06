@@ -6,21 +6,22 @@ import BottomNavigation from './components/BottomNavigation';
 import HomeTab from './components/HomeTab';
 import ActivityTab from './components/ActivityTab';
 import SettingsTab from './components/SettingsTab';
-import { SendModal, ReceiveModal, BuyModal, BackupModal, PhraseModal, TransactionModal, PasswordPromptModal, SelectWalletTypeModal, TokenDetailsModal, PrivateKeyModal, SwapModal } from './components/WalletModals';
+import { SendModal, ReceiveModal, BackupModal, PhraseModal, TransactionModal, PasswordPromptModal, SelectWalletTypeModal, TokenDetailsModal, PrivateKeyModal, SwapModal } from './components/WalletModals';
 import { AccountsModal, AddAccountModal } from './components/AccountModals';
 import NetworkBanner from './components/NetworkBanner';
-
+import MultiSendModal from './components/MultiSend/MultiSendModal';
+import { useMultiSend } from './context/MultiSendContext';
 
 export default function TonWallet() {
     // Context State
     const { isLoggedIn, balance, transactions, walletAddress, sendTransaction, logout, isLoading, walletType, getDecryptedSeed, getPrivateKey, switchWalletType, tokens, totalBalanceUSDT, accounts, activeAccount, selectAccount, addAccount, renameAccount, deleteAccount, refreshData } = useWallet();
+    const { openModal: openMultiSend } = useMultiSend();
 
     // UI State
     const [activeTab, setActiveTab] = useState('home');
     const [copied, setCopied] = useState(false);
     const [showSendModal, setShowSendModal] = useState(false);
     const [showReceiveModal, setShowReceiveModal] = useState(false);
-    const [showBuyModal, setShowBuyModal] = useState(false);
     const [showSwapModal, setShowSwapModal] = useState(false);
     const [activityFilter, setActivityFilter] = useState('all');
     const [darkMode, setDarkMode] = useState(false);
@@ -266,12 +267,11 @@ export default function TonWallet() {
     }
 
     return (
-        <div className={`min-h-screen ${darkMode ? 'bg-black' : 'bg-gradient-to-br from-blue-50 to-indigo-50'} p-4 flex items-center justify-center`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+        <div className={`min-h-screen ${darkMode ? 'dark bg-[hsl(224,20%,5%)]' : 'bg-gradient-to-br from-slate-50 via-blue-50/40 to-indigo-50/30'} p-4 flex items-center justify-center`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
             {/* Network Status Banner */}
             <NetworkBanner darkMode={darkMode} />
 
-            <div className={`w-full max-w-md ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[85vh] relative`}>
-
+            <div className={`w-full max-w-md ${darkMode ? 'bg-[hsl(228,18%,7%)] ring-1 ring-white/[0.06] shadow-[0_0_60px_-15px_rgba(0,0,0,0.5)]' : 'bg-white/80 backdrop-blur-xl ring-1 ring-black/[0.08] shadow-2xl'} rounded-3xl overflow-hidden flex flex-col h-[85vh] relative`}>
                 <WalletHeader
                     darkMode={darkMode}
                     language={language}
@@ -292,8 +292,8 @@ export default function TonWallet() {
                             language={language}
                             setShowSendModal={setShowSendModal}
                             setShowReceiveModal={setShowReceiveModal}
-                            setShowBuyModal={setShowBuyModal}
                             setShowSwapModal={setShowSwapModal}
+                            onMultiSendClick={openMultiSend}
                             tokens={tokens}
                             onTokenClick={(token) => {
                                 setSelectedToken(token);
@@ -357,13 +357,6 @@ export default function TonWallet() {
                     walletAddress={walletAddress || ''}
                     handleCopy={handleCopy}
                     copied={copied}
-                />
-                <BuyModal
-                    isOpen={showBuyModal}
-                    onClose={() => setShowBuyModal(false)}
-                    darkMode={darkMode}
-                    language={language}
-                    walletAddress={walletAddress || ''}
                 />
                 <SwapModal
                     isOpen={showSwapModal}
@@ -465,6 +458,8 @@ export default function TonWallet() {
                     darkMode={darkMode}
                     language={language}
                 />
+                {/* Multi-Send Modal */}
+                <MultiSendModal darkMode={darkMode} language={language} />
             </div>
         </div>
     );

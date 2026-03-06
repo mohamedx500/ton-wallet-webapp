@@ -1,6 +1,0 @@
-
-V4R2: UQCJ1hO268J435haE__5YkLh4iwnzLZuyAsvAEuMegxqvh9_
-V5R1: UQDp7XagzRvnhu9hrBjE8VbUZusMeyKG8lZCD8IvIVE8HlP5
-V5R1-B: EQDp7XagzRvnhu9hrBjE8VbUZusMeyKG8lZCD8IvIVE8Hg48
-Expected: UQCzqOPE57wjIaaQqjsptr-UiSI9FWws7f6kCJvaY7Cp9zka
-WalletId: {"networkGlobalId":-239,"context":{"workchain":0,"walletVersion":"v5r1","subwalletNumber":0}}

@@ -1,7 +1,7 @@
 {
     "name": "ton-universal-wallet",
     "version": "2.0.0",
-    "description": "Universal TON Wallet System with V3R1, V3R2, V4R2, V5R1, and Highload V3 support",
+    "description": "Decentralized wallet system with V3R1, V3R2, V4R2, V5R1, and Highload V3 support",
     "type": "module",
     "scripts": {
         "dev": "vite",
@@ -12,14 +12,22 @@
         "type-check": "tsc --noEmit"
     },
     "dependencies": {
-        "@ton/core": "^0.62.0",
+        "@ton/core": "^0.63.1",
         "@ton/crypto": "^3.3.0",
-        "@ton/ton": "^15.0.0",
+        "@ton/ton": "^16.2.2",
         "buffer": "^6.0.3",
+        "cheerio": "^1.2.0",
+        "class-variance-authority": "^0.7.1",
+        "clsx": "^2.1.1",
+        "docx": "^9.6.0",
+        "framer-motion": "^12.34.0",
+        "html-to-docx": "^1.8.0",
         "lucide-react": "^0.562.0",
         "process": "^0.11.10",
+        "puppeteer": "^24.37.5",
         "react": "^19.2.3",
         "react-dom": "^19.2.3",
+        "tailwind-merge": "^3.4.0",
         "uuid": "^13.0.0"
     },
     "devDependencies": {

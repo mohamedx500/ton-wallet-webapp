@@ -17,6 +17,7 @@
 
 import { Address, Cell, toNano } from '@ton/core';
 import { TonClient } from '@ton/ton';
+import { WalletService } from '../WalletService.js';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -265,6 +266,7 @@ export class TransactionQueueManager {
     private completed: Map<string, TransactionResult>;
     private lockManager: LockManager;
     private config: QueueConfig;
+    private walletService: WalletService;
     private isProcessing: boolean = false;
     private processingTimer: ReturnType<typeof setInterval> | null = null;
     private stats: {
@@ -279,8 +281,9 @@ export class TransactionQueueManager {
     private onStatusChange?: (tx: QueuedTransaction) => void;
     private onError?: (tx: QueuedTransaction, error: Error) => void;
 
-    constructor(config?: Partial<QueueConfig>) {
+    constructor(config?: Partial<QueueConfig>, walletService?: WalletService) {
         this.config = { ...DEFAULT_CONFIG, ...config };
+        this.walletService = walletService || new WalletService();
         this.queue = new PriorityQueue();
         this.processing = new Map();
         this.completed = new Map();
@@ -534,15 +537,78 @@ export class TransactionQueueManager {
     }
 
     /**
-     * Send transaction (stub - implement with actual wallet service)
+     * Send transaction via WalletService
+     *
+     * Expects the following keys in tx.metadata:
+     *   - mnemonic: string[]   (wallet seed phrase)
+     *   - walletType: string   (e.g. 'v4r2', 'v3r2', 'highload-v3')
+     *   - testnet?: boolean
+     *
+     * For jetton_transfer, also expects:
+     *   - jettonWalletAddress: string
+     *   - decimals?: number
      */
     private async sendTransaction(tx: QueuedTransaction): Promise<string> {
-        // This is a stub - integrate with your WalletService
-        // For now, simulate a transaction hash
-        await this.sleep(500); // Simulate network delay
-        return `0x${Array.from({ length: 64 }, () =>
-            Math.floor(Math.random() * 16).toString(16)
-        ).join('')}`;
+        const meta = tx.metadata as Record<string, any> | undefined;
+        if (!meta?.mnemonic || !meta?.walletType) {
+            throw new Error(
+                'Transaction metadata must include mnemonic and walletType'
+            );
+        }
+
+        const mnemonic: string[] = meta.mnemonic;
+        const walletType: string = meta.walletType;
+        const testnet: boolean = !!meta.testnet;
+
+        let result: { success: boolean; seqno: number | string };
+
+        if (tx.type === 'jetton_transfer') {
+            const jettonWalletAddress: string | undefined =
+                meta.jettonWalletAddress;
+            if (!jettonWalletAddress) {
+                throw new Error(
+                    'jettonWalletAddress is required in metadata for jetton transfers'
+                );
+            }
+            const finalRecipient: string = (meta.finalRecipient as string) || tx.recipient;
+            const decimals: number = (meta.decimals as number) ?? 6;
+            // amount stored on tx is already in smallest units (bigint)
+            // WalletService.sendJettonTransfer expects human-readable amount
+            const jettonAmount: number = meta.jettonAmount
+                ? Number(meta.jettonAmount)
+                : Number(tx.amount);
+
+            result = await this.walletService.sendJettonTransfer(
+                mnemonic,
+                walletType,
+                jettonWalletAddress,
+                finalRecipient,
+                jettonAmount,
+                decimals,
+                tx.comment || '',
+                testnet
+            );
+        } else {
+            // ton_transfer / swap / deploy / custom — use standard sendTransaction
+            // Convert nanoton bigint back to TON string for WalletService
+            const amountInTon = (Number(tx.amount) / 1e9).toFixed(9);
+
+            result = await this.walletService.sendTransaction(
+                mnemonic,
+                walletType,
+                tx.recipient,
+                amountInTon,
+                tx.comment || '',
+                testnet
+            );
+        }
+
+        if (!result.success) {
+            throw new Error('WalletService reported transaction failure');
+        }
+
+        // Return seqno as the transaction hash identifier
+        return String(result.seqno);
     }
 
     /**
@@ -728,9 +794,11 @@ let queueManagerInstance: TransactionQueueManager | null = null;
 /**
  * Get singleton instance
  */
-export function getTransactionQueueManager(): TransactionQueueManager {
+export function getTransactionQueueManager(
+    walletService?: WalletService
+): TransactionQueueManager {
     if (!queueManagerInstance) {
-        queueManagerInstance = new TransactionQueueManager();
+        queueManagerInstance = new TransactionQueueManager(undefined, walletService);
     }
     return queueManagerInstance;
 }
