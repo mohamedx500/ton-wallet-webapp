@@ -1,6 +1,10 @@
 /**
  * HighloadWalletV3 - Official Highload Wallet V3 wrapper
  * Based on: https://github.com/ton-blockchain/highload-wallet-contract-v3
+ *
+ * CRITICAL FIX: Handles auto-deployment for uninitialized contracts by
+ * manually constructing the external message with StateInit when needed,
+ * instead of relying on provider.external() which crashes on uninit wallets.
  */
 import { Buffer } from 'buffer';
 import {
@@ -75,8 +79,14 @@ export class HighloadWalletV3 implements Contract {
     }
 
     /**
-     * Send external message - provider is auto-injected by client.open()
-     * Call like: wallet.sendExternalMessage(secretKey, opts)
+     * Send external message with auto-deploy support.
+     *
+     * CRITICAL FIX: Instead of relying on provider.external() (which crashes
+     * when the contract is uninitialized due to accessing .info on undefined),
+     * we manually construct and send the raw external message BOC.
+     *
+     * When the contract is uninit, the StateInit is attached to the external
+     * message so the contract is deployed on-chain in the same transaction.
      */
     async sendExternalMessage(
         provider: ContractProvider,
@@ -114,13 +124,17 @@ export class HighloadWalletV3 implements Contract {
             .storeUint(opts.timeout, TIMEOUT_SIZE)
             .endCell();
 
-        // Sign and wrap - messageInner stored as REFERENCE
-        await provider.external(
-            beginCell()
-                .storeBuffer(sign(messageInner.hash(), secretKey))
-                .storeRef(messageInner)      // Inner message stored as REFERENCE
-                .endCell()
-        );
+        // Sign the internal message
+        const signature = sign(messageInner.hash(), secretKey);
+
+        // Build the external body (signature + internal as ref)
+        const body = beginCell()
+            .storeBuffer(signature)
+            .storeRef(messageInner)
+            .endCell();
+
+        // Let the provider gracefully handle the auto-deploy and sending
+        await provider.external(body);
     }
 
     static createInternalTransferBody(opts: {

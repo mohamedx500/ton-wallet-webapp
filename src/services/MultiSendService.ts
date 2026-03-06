@@ -412,176 +412,95 @@ export async function executeW5Batch(
 // D) EXECUTE HIGHLOAD V3 (Parallel via Query IDs)
 // =============================================================================
 
-/**
- * Execute multi-send using Highload Wallet V3.
- *
- * PROTOCOL RULES:
- * - Uses independent Query IDs (Shift << 10 + BitNumber), NOT Seqno.
- * - NO delays between batches — all dispatched simultaneously.
- * - Partial failure isolation: failed Query ID → specific row(s).
- *
- * @param mode 'batches' → chunk and fire all chunks via Promise.all.
- *             'individual' → fire every single transfer as its own TX.
- * @returns Array of chunk results.
- */
 export async function executeHighloadV3(
     params: MultiSendExecuteParams,
     mode: HighloadMode
 ): Promise<ChunkResult[]> {
     const { client, keyPair, senderAddress, network, rows, onBatchUpdate, onRowUpdate } = params;
-
     const jettonCache: JettonWalletCache = new Map();
-
-    // Dynamic import of Highload services
-    const { HighloadWalletV3Service } = await import('../wallets/highload-v3');
-
+    const { HighloadWalletV3Service } = await import('../wallets/highload-v3/HighloadService');
     const highloadService = new HighloadWalletV3Service(network);
 
     if (mode === 'batches') {
-        // ── MODE A: Chunked Batches (up to 254 per TX, all fired simultaneously) ──
         const chunks = chunkTransfers(rows);
+        const results: ChunkResult[] = [];
 
-        // Build all chunk messages in parallel
-        const chunkMessages = await Promise.all(
-            chunks.map(async (chunk) => {
+        for (const chunk of chunks) {
+            onBatchUpdate?.(chunk.index, 'sending');
+            try {
                 const messages: OutActionSendMsg[] = [];
                 for (const row of chunk.rows) {
-                    const msg = await buildTransferMessage(row, senderAddress, network, jettonCache);
-                    messages.push(msg);
+                    onRowUpdate?.(row.id, 'sending');
+                    messages.push(await buildTransferMessage(row, senderAddress, network, jettonCache));
                 }
-                return { chunk, messages };
-            })
-        );
 
-        // Notify all rows as sending
-        for (const row of rows) {
-            onRowUpdate?.(row.id, 'sending');
-        }
-
-        // Fire ALL chunks simultaneously (no delays — Highload V3 uses Query IDs)
-        const chunkPromises = chunkMessages.map(async ({ chunk, messages }) => {
-            onBatchUpdate?.(chunk.index, 'sending');
-
-            try {
-                const result = await highloadService.sendBatch(client, keyPair,
-                    chunk.rows.map(row => ({
-                        to: row.resolvedAddress || row.address,
-                        amount: parseAmount(row.amount, row.coin.decimals),
-                        comment: row.comment || undefined,
-                        bounce: false,
-                    }))
-                );
+                const result = await highloadService.sendBatch(client, keyPair, messages);
 
                 if (result.success) {
-                    const txHash = `hl_batch_${chunk.index}_q${result.queryId?.toString() || 'unknown'}`;
-                    onBatchUpdate?.(chunk.index, 'success', txHash);
-                    for (const row of chunk.rows) {
-                        onRowUpdate?.(row.id, 'success', undefined, result.queryId);
-                    }
-                    return {
-                        chunkIndex: chunk.index,
-                        success: true,
-                        txHash,
-                        queryId: result.queryId,
-                    } as ChunkResult;
-                } else {
-                    const errorMsg = result.error || 'Highload batch dispatch failed';
-                    onBatchUpdate?.(chunk.index, 'failed', undefined, errorMsg);
-                    // ISOLATED FAILURE: Only mark THIS chunk's rows as failed
-                    for (const row of chunk.rows) {
-                        onRowUpdate?.(row.id, 'failed', errorMsg, result.queryId);
-                    }
-                    return {
-                        chunkIndex: chunk.index,
-                        success: false,
-                        error: errorMsg,
-                        queryId: result.queryId,
-                    } as ChunkResult;
-                }
-            } catch (error) {
-                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                onBatchUpdate?.(chunk.index, 'failed', undefined, errorMsg);
-                for (const row of chunk.rows) {
-                    onRowUpdate?.(row.id, 'failed', errorMsg);
-                }
-                return {
-                    chunkIndex: chunk.index,
-                    success: false,
-                    error: errorMsg,
-                } as ChunkResult;
+                    // Fetch the real hash from the blockchain
+                    let realTxHash = `hl_batch_${chunk.index}_q${result.queryId?.toString()}`;
+                    await new Promise(r => setTimeout(r, 2500));
+                    const txs = await client.getTransactions(Address.parse(senderAddress), { limit: 1 });
+                    if (txs.length > 0) realTxHash = txs[0].hash().toString('hex');
+
+                    onBatchUpdate?.(chunk.index, 'success', realTxHash);
+                    for (const row of chunk.rows) onRowUpdate?.(row.id, 'success', undefined, result.queryId);
+                    results.push({ chunkIndex: chunk.index, success: true, txHash: realTxHash });
+                } else { throw new Error(result.error); }
+            } catch (error: any) {
+                onBatchUpdate?.(chunk.index, 'failed', undefined, error.message);
+                results.push({ chunkIndex: chunk.index, success: false, error: error.message });
             }
-        });
-
-        // Await ALL simultaneously (no delays)
-        const results = await Promise.allSettled(chunkPromises);
-
-        return results.map((result) => {
-            if (result.status === 'fulfilled') return result.value;
-            return {
-                chunkIndex: -1,
-                success: false,
-                error: result.reason?.message || 'Promise rejected',
-            };
-        });
+        }
+        return results;
     } else {
-        // ── MODE B: Individual Parallel (each transfer is a separate TX) ──
-        // Fire every single transfer simultaneously, each with its own Query ID
+        // Individual Parallel (Burst Mode - Fire & Forget)
+        // 1. Prepare all messages in memory first without waiting for the network (to eliminate any delay)
+        const preparedTasks = await Promise.all(rows.map(row => buildTransferMessage(row, senderAddress, network, jettonCache)));
 
-        // Notify all as sending
-        for (const row of rows) {
-            onRowUpdate?.(row.id, 'sending');
+        // 2. Launch all transactions simultaneously
+        const individualPromises = preparedTasks.map((msg, i) => {
+            const rowId = rows[i].id;
+            onRowUpdate?.(rowId, 'sending');
+
+            return highloadService.sendTransaction(client, keyPair, msg)
+                .then(res => {
+                    if (res.success) {
+                        onRowUpdate?.(rowId, 'success', undefined, res.queryId);
+                        return { success: true };
+                    }
+                    throw new Error(res.error);
+                })
+                .catch(err => {
+                    onRowUpdate?.(rowId, 'failed', err.message);
+                    return { success: false };
+                });
+        });
+
+        // Tell the interface that the batch has started sending
+        onBatchUpdate?.(0, 'sending');
+
+        // Implementing true parallel transmission
+        const results = await Promise.all(individualPromises);
+
+        // 3. Fetching the hash and terminating the Pending state in the interface
+        const allSuccess = results.every(r => r.success);
+        let burstHash = `burst_${Date.now()}`;
+
+        if (allSuccess) {
+            try {
+                await new Promise(r => setTimeout(r, 2500));
+                const txs = await client.getTransactions(Address.parse(senderAddress), { limit: 1 });
+                if (txs.length > 0) burstHash = txs[0].hash().toString('hex');
+            } catch (e) {
+                console.warn('Hash fetch failed', e);
+            }
         }
 
-        const individualPromises = rows.map(async (row, index) => {
-            try {
-                const result = await highloadService.sendTransaction(client, keyPair, {
-                    to: row.resolvedAddress || row.address,
-                    amount: parseAmount(row.amount, row.coin.decimals),
-                    comment: row.comment || undefined,
-                    bounce: false,
-                });
+        // The magic line that removes the Pending and makes the batch return (Done)
+        onBatchUpdate?.(0, allSuccess ? 'success' : 'failed', burstHash);
 
-                if (result.success) {
-                    const txHash = `hl_ind_${index}_q${result.queryId?.toString() || 'unknown'}`;
-                    onRowUpdate?.(row.id, 'success', undefined, result.queryId);
-                    return {
-                        chunkIndex: index,
-                        success: true,
-                        txHash,
-                        queryId: result.queryId,
-                    } as ChunkResult;
-                } else {
-                    const errorMsg = result.error || 'Individual transfer failed';
-                    onRowUpdate?.(row.id, 'failed', errorMsg, result.queryId);
-                    return {
-                        chunkIndex: index,
-                        success: false,
-                        error: errorMsg,
-                        queryId: result.queryId,
-                    } as ChunkResult;
-                }
-            } catch (error) {
-                const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-                onRowUpdate?.(row.id, 'failed', errorMsg);
-                return {
-                    chunkIndex: index,
-                    success: false,
-                    error: errorMsg,
-                } as ChunkResult;
-            }
-        });
-
-        // Fire ALL simultaneously (Highload V3 — no seqno, no delays)
-        const results = await Promise.allSettled(individualPromises);
-
-        return results.map((result) => {
-            if (result.status === 'fulfilled') return result.value;
-            return {
-                chunkIndex: -1,
-                success: false,
-                error: result.reason?.message || 'Promise rejected',
-            };
-        });
+        return results.map((r, i) => ({ chunkIndex: i, success: r.success }));
     }
 }
 

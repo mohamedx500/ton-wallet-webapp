@@ -127,7 +127,7 @@ export class HighloadV3JettonService {
             const openedWallet = client.open(wallet) as unknown as HighloadWalletV3;
 
             await openedWallet.sendExternalMessage(
-                client.provider(wallet.address),
+                client.provider(wallet.address, wallet.init ?? undefined),
                 keyPair.secretKey,
                 {
                     message: internalMessage,
@@ -202,7 +202,7 @@ export class HighloadV3JettonService {
             const openedWallet = client.open(wallet) as unknown as HighloadWalletV3;
 
             await openedWallet.sendBatch(
-                client.provider(wallet.address),
+                client.provider(wallet.address, wallet.init ?? undefined),
                 keyPair.secretKey,
                 messages,
                 this.subwalletId,

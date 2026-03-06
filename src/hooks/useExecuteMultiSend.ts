@@ -15,7 +15,6 @@
  */
 
 import { useCallback } from 'react';
-import { TonClient } from '@ton/ton';
 import { useMultiSend } from '../context/MultiSendContext';
 import { useWallet } from '../context/WalletContext';
 import { isValidAddressFormat } from '../context/MultiSendContext';
@@ -224,9 +223,11 @@ export function useExecuteMultiSend(): UseExecuteMultiSendReturn {
             const { mnemonicToPrivateKey } = await import('@ton/crypto');
             const keyPair = await mnemonicToPrivateKey(mnemonic);
 
+            const { TonClient } = await import('@ton/ton');
+
             const client = new TonClient({
                 endpoint: 'https://toncenter.com/api/v2/jsonRPC',
-                apiKey: import.meta.env.VITE_TONCENTER_API_KEY,
+                apiKey: import.meta.env.VITE_TONCENTER_API_KEY, // The magic line that will read the key
             });
 
             const senderAddress = walletAddress;
