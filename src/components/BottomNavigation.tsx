@@ -1,5 +1,7 @@
 import React from 'react';
-import { Wallet, Settings, Clock } from 'lucide-react';
+import { Wallet, SlidersHorizontal, ArrowLeftRight } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { cn } from '../lib/utils';
 
 interface BottomNavigationProps {
     darkMode: boolean;
@@ -8,60 +10,54 @@ interface BottomNavigationProps {
     language: string;
 }
 
+const tabs = [
+    { id: 'home', icon: Wallet, labelEn: 'Wallet', labelAr: 'المحفظة' },
+    { id: 'activity', icon: ArrowLeftRight, labelEn: 'Activity', labelAr: 'النشاط' },
+    { id: 'settings', icon: SlidersHorizontal, labelEn: 'Settings', labelAr: 'الإعدادات' },
+];
+
 export default function BottomNavigation({ darkMode, activeTab, setActiveTab, language }: BottomNavigationProps) {
     return (
-        <div className={`border-t ${darkMode ? 'border-gray-900 bg-gray-950' : 'border-gray-200 bg-white'}`}>
-            <div className="grid grid-cols-3 gap-1 p-2">
-                <button
-                    onClick={() => setActiveTab('home')}
-                    className={`flex flex-col items-center justify-center py-3 rounded-xl transition ${activeTab === 'home'
-                        ? darkMode
-                            ? 'bg-blue-950 text-blue-400'
-                            : 'bg-blue-50 text-blue-600'
-                        : darkMode
-                            ? 'text-gray-500'
-                            : 'text-gray-500'
-                        }`}
-                >
-                    <Wallet size={22} />
-                    <span className="text-xs mt-1 font-medium">
-                        {language === 'ar' ? 'المحفظة' : 'Wallet'}
-                    </span>
-                </button>
-
-                <button
-                    onClick={() => setActiveTab('activity')}
-                    className={`flex flex-col items-center justify-center py-3 rounded-xl transition ${activeTab === 'activity'
-                        ? darkMode
-                            ? 'bg-blue-950 text-blue-400'
-                            : 'bg-blue-50 text-blue-600'
-                        : darkMode
-                            ? 'text-gray-500'
-                            : 'text-gray-500'
-                        }`}
-                >
-                    <Clock size={22} />
-                    <span className="text-xs mt-1 font-medium">
-                        {language === 'ar' ? 'النشاط' : 'Activity'}
-                    </span>
-                </button>
-
-                <button
-                    onClick={() => setActiveTab('settings')}
-                    className={`flex flex-col items-center justify-center py-3 rounded-xl transition ${activeTab === 'settings'
-                        ? darkMode
-                            ? 'bg-blue-950 text-blue-400'
-                            : 'bg-blue-50 text-blue-600'
-                        : darkMode
-                            ? 'text-gray-500'
-                            : 'text-gray-500'
-                        }`}
-                >
-                    <Settings size={22} />
-                    <span className="text-xs mt-1 font-medium">
-                        {language === 'ar' ? 'الإعدادات' : 'Settings'}
-                    </span>
-                </button>
+        <div className="px-4 pb-3 pt-1.5">
+            <div className={cn("glass-card p-1.5 grid grid-cols-3 gap-1 relative")}>
+                {tabs.map(({ id, icon: Icon, labelEn, labelAr }) => {
+                    const isActive = activeTab === id;
+                    return (
+                        <button
+                            key={id}
+                            onClick={() => setActiveTab(id)}
+                            className={cn(
+                                "relative flex flex-col items-center justify-center py-2 rounded-xl transition-colors z-[1]",
+                                isActive
+                                    ? darkMode ? "text-blue-400" : "text-blue-600"
+                                    : darkMode ? "text-gray-600 hover:text-gray-400" : "text-gray-400 hover:text-gray-600"
+                            )}
+                        >
+                            {isActive && (
+                                <motion.div
+                                    layoutId="activeTabBg"
+                                    className={cn(
+                                        "absolute inset-0 rounded-xl",
+                                        darkMode
+                                            ? "bg-white/[0.06] ring-1 ring-white/10"
+                                            : "bg-white shadow-sm ring-1 ring-black/[0.04]"
+                                    )}
+                                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                                />
+                            )}
+                            <motion.div
+                                animate={{ scale: isActive ? 1 : 0.9 }}
+                                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                                className="relative z-[1]"
+                            >
+                                <Icon size={22} strokeWidth={isActive ? 2 : 1.5} className="mb-0.5" />
+                            </motion.div>
+                            <span className={cn("text-[10px] font-semibold relative z-[1]", isActive && "tracking-wide")}>
+                                {language === 'ar' ? labelAr : labelEn}
+                            </span>
+                        </button>
+                    );
+                })}
             </div>
         </div>
     );

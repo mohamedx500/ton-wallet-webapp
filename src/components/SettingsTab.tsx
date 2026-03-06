@@ -1,5 +1,6 @@
 import React from 'react';
-import { Shield, ChevronRight, Key, Moon, Bell, Globe, Wallet, LogOut } from 'lucide-react';
+import { ShieldCheck, ChevronRight, Moon, BellRing, Languages, Wallet, LogOut } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface SettingsTabProps {
     darkMode: boolean;
@@ -15,161 +16,135 @@ interface SettingsTabProps {
     onWalletTypeClick: () => void;
 }
 
+function Toggle({ checked, onChange, darkMode }: { checked: boolean; onChange: () => void; darkMode: boolean }) {
+    return (
+        <button
+            onClick={onChange}
+            className={cn(
+                "relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ring-1",
+                checked
+                    ? "bg-blue-500 ring-blue-400/30"
+                    : darkMode ? "bg-white/10 ring-white/10" : "bg-gray-200 ring-black/[0.04]"
+            )}
+        >
+            <div className={cn("absolute w-5 h-5 bg-white rounded-full top-0.5 transition-all shadow-sm", checked ? "left-[22px]" : "left-0.5")} />
+        </button>
+    );
+}
+
+function SettingsRow({ icon: Icon, label, sublabel, darkMode, onClick, trailing, isLast }: {
+    icon: any; label: string; sublabel: string; darkMode: boolean; onClick?: () => void; trailing?: React.ReactNode; isLast?: boolean;
+}) {
+    const Comp = onClick ? 'button' : 'div';
+    return (
+        <Comp
+            onClick={onClick}
+            className={cn(
+                "w-full flex items-center justify-between px-4 py-3.5 transition-all text-left",
+                onClick && "active:scale-[0.99]",
+                darkMode ? "hover:bg-white/[0.03]" : "hover:bg-black/[0.02]",
+                !isLast && (darkMode ? "border-b border-white/[0.06]" : "border-b border-black/[0.04]")
+            )}
+        >
+            <div className="flex items-center gap-3">
+                <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ring-1", darkMode ? "bg-white/5 text-gray-400 ring-white/10" : "bg-gray-50 text-gray-500 ring-black/[0.06]")}>
+                    <Icon size={18} strokeWidth={1.8} />
+                </div>
+                <div>
+                    <p className={cn("text-sm font-semibold", darkMode ? "text-white" : "text-gray-900")}>{label}</p>
+                    <p className={cn("text-[11px]", darkMode ? "text-gray-500" : "text-gray-400")}>{sublabel}</p>
+                </div>
+            </div>
+            {trailing}
+        </Comp>
+    );
+}
+
 export default function SettingsTab({
     darkMode, setDarkMode, language, setLanguage, walletType,
     notifications, setNotifications, setShowBackupModal, setShowPhraseModal, onLogout, onWalletTypeClick
 }: SettingsTabProps) {
-    // Common styles for settings rows - with proper contrast
-    const rowStyle = darkMode
-        ? 'bg-gray-900 hover:bg-gray-800'
-        : 'bg-gray-50 hover:bg-gray-100 border border-gray-200 shadow-sm';
-
     return (
-        <div className={`px-6 pb-6 pt-4 ${darkMode ? '' : 'bg-gray-100/50'}`}>
-            {/* Security Section */}
-            <div className="mb-6">
-                <h4 className={`text-sm font-bold ${darkMode ? 'text-gray-500' : 'text-gray-600'} mb-3 mr-2`}>
-                    {language === 'ar' ? 'الأمان' : 'Security'}
-                </h4>
-                <div className="space-y-2">
-                    <button
-                        onClick={() => setShowBackupModal(true)}
-                        className={`w-full ${rowStyle} rounded-xl p-4 flex items-center justify-between transition`}
-                    >
-                        <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 ${darkMode ? 'bg-blue-950' : 'bg-blue-100'} rounded-full flex items-center justify-center`}>
-                                <Shield size={20} className={darkMode ? 'text-blue-400' : 'text-blue-600'} />
-                            </div>
-                            <div className="text-right">
-                                <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                    {language === 'ar' ? 'النسخ الاحتياطي' : 'Backup'}
-                                </p>
-                                <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                    {language === 'ar' ? 'احفظ المحفظة بأمان' : 'Save wallet securely'}
-                                </p>
-                            </div>
-                        </div>
-                        <ChevronRight className={darkMode ? 'text-gray-600' : 'text-gray-400'} size={20} />
-                    </button>
-
-
-                </div>
+        <div className="px-5 pb-6 pt-3">
+            {/* Security */}
+            <p className={cn("text-[11px] font-bold uppercase tracking-wider mb-2 px-1", darkMode ? "text-blue-400/50" : "text-gray-400")}>
+                {language === 'ar' ? 'الأمان' : 'Security'}
+            </p>
+            <div className="glass-card overflow-hidden mb-5">
+                <SettingsRow
+                    icon={ShieldCheck}
+                    label={language === 'ar' ? 'النسخ الاحتياطي' : 'Backup'}
+                    sublabel={language === 'ar' ? 'احفظ المحفظة بأمان' : 'Save wallet securely'}
+                    darkMode={darkMode}
+                    onClick={() => setShowBackupModal(true)}
+                    isLast
+                    trailing={<ChevronRight size={16} className={darkMode ? "text-gray-600" : "text-gray-300"} />}
+                />
             </div>
 
-            {/* Preferences Section */}
-            <div className="mb-6">
-                <h4 className={`text-sm font-bold ${darkMode ? 'text-gray-500' : 'text-gray-600'} mb-3 mr-2`}>
-                    {language === 'ar' ? 'التفضيلات' : 'Preferences'}
-                </h4>
-                <div className="space-y-2">
-                    <div className={`w-full ${rowStyle} rounded-xl p-4 flex items-center justify-between`}>
-                        <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 ${darkMode ? 'bg-yellow-950' : 'bg-yellow-100'} rounded-full flex items-center justify-center`}>
-                                <Moon size={20} className={darkMode ? 'text-yellow-400' : 'text-yellow-600'} />
-                            </div>
-                            <div className="text-right">
-                                <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                    {language === 'ar' ? 'الوضع الداكن' : 'Dark Mode'}
-                                </p>
-                                <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                    {language === 'ar' ? 'تغيير المظهر' : 'Change appearance'}
-                                </p>
-                            </div>
-                        </div>
-                        <button
-                            onClick={() => setDarkMode(!darkMode)}
-                            className={`relative w-12 h-6 rounded-full transition ${darkMode ? 'bg-blue-600' : 'bg-gray-300'
-                                }`}
-                        >
-                            <div
-                                className={`absolute w-5 h-5 bg-white rounded-full top-0.5 transition ${darkMode ? 'right-0.5' : 'right-6'
-                                    }`}
-                            ></div>
-                        </button>
-                    </div>
+            {/* Preferences */}
+            <p className={cn("text-[11px] font-bold uppercase tracking-wider mb-2 px-1", darkMode ? "text-blue-400/50" : "text-gray-400")}>
+                {language === 'ar' ? 'التفضيلات' : 'Preferences'}
+            </p>
+            <div className="glass-card overflow-hidden mb-5">
+                <SettingsRow
+                    icon={Moon}
+                    label={language === 'ar' ? 'الوضع الداكن' : 'Dark Mode'}
+                    sublabel={language === 'ar' ? 'تغيير المظهر' : 'Change appearance'}
+                    darkMode={darkMode}
+                    trailing={<Toggle checked={darkMode} onChange={() => setDarkMode(!darkMode)} darkMode={darkMode} />}
+                />
 
-                    <div className={`w-full ${rowStyle} rounded-xl p-4 flex items-center justify-between`}>
-                        <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 ${darkMode ? 'bg-red-950' : 'bg-red-100'} rounded-full flex items-center justify-center`}>
-                                <Bell size={20} className={darkMode ? 'text-red-400' : 'text-red-600'} />
-                            </div>
-                            <div className="text-right">
-                                <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                    {language === 'ar' ? 'الإشعارات' : 'Notifications'}
-                                </p>
-                                <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                    {language === 'ar' ? 'تنبيهات المعاملات' : 'Transaction alerts'}
-                                </p>
-                            </div>
-                        </div>
-                        <button
-                            onClick={() => setNotifications(!notifications)}
-                            className={`relative w-12 h-6 rounded-full transition ${notifications ? 'bg-blue-600' : 'bg-gray-300'
-                                }`}
-                        >
-                            <div
-                                className={`absolute w-5 h-5 bg-white rounded-full top-0.5 transition ${notifications ? 'right-0.5' : 'right-6'
-                                    }`}
-                            ></div>
-                        </button>
-                    </div>
+                <SettingsRow
+                    icon={BellRing}
+                    label={language === 'ar' ? 'الإشعارات' : 'Notifications'}
+                    sublabel={language === 'ar' ? 'تنبيهات المعاملات' : 'Transaction alerts'}
+                    darkMode={darkMode}
+                    trailing={<Toggle checked={notifications} onChange={() => setNotifications(!notifications)} darkMode={darkMode} />}
+                />
 
-                    <button
-                        onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-                        className={`w-full ${rowStyle} rounded-xl p-4 flex items-center justify-between transition`}
-                    >
-                        <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 ${darkMode ? 'bg-green-950' : 'bg-green-100'} rounded-full flex items-center justify-center`}>
-                                <Globe size={20} className={darkMode ? 'text-green-400' : 'text-green-600'} />
-                            </div>
-                            <div className="text-right">
-                                <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                    {language === 'ar' ? 'اللغة' : 'Language'}
-                                </p>
-                                <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                    {language === 'ar' ? 'العربية' : 'English'}
-                                </p>
-                            </div>
-                        </div>
-                        <div className={`text-sm font-medium px-3 py-1 rounded-full ${darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-200 text-gray-600'}`}>
+                <SettingsRow
+                    icon={Languages}
+                    label={language === 'ar' ? 'اللغة' : 'Language'}
+                    sublabel={language === 'ar' ? 'العربية' : 'English'}
+                    darkMode={darkMode}
+                    onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+                    trailing={
+                        <span className={cn("text-[11px] font-bold px-2.5 py-1 rounded-lg ring-1", darkMode ? "bg-white/5 text-gray-400 ring-white/10" : "bg-gray-50 text-gray-500 ring-black/[0.06]")}>
                             {language === 'ar' ? 'EN' : 'ع'}
-                        </div>
-                    </button>
+                        </span>
+                    }
+                />
 
-                    <button
-                        onClick={onWalletTypeClick}
-                        className={`w-full ${rowStyle} rounded-xl p-4 flex items-center justify-between transition`}
-                    >
-                        <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 ${darkMode ? 'bg-indigo-950' : 'bg-indigo-100'} rounded-full flex items-center justify-center`}>
-                                <Wallet size={20} className={darkMode ? 'text-indigo-400' : 'text-indigo-600'} />
-                            </div>
-                            <div className="text-right">
-                                <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
-                                    {language === 'ar' ? 'نوع المحفظة' : 'Wallet Type'}
-                                </p>
-                                <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                    {language === 'ar' ? 'تبديل الإصدار' : 'Switch version'}
-                                </p>
-                            </div>
+                <SettingsRow
+                    icon={Wallet}
+                    label={language === 'ar' ? 'نوع المحفظة' : 'Wallet Type'}
+                    sublabel={language === 'ar' ? 'تبديل الإصدار' : 'Switch version'}
+                    darkMode={darkMode}
+                    onClick={onWalletTypeClick}
+                    isLast
+                    trailing={
+                        <div className="flex items-center gap-1.5">
+                            <span className={cn("text-[11px] font-bold px-2 py-0.5 rounded-md ring-1", darkMode ? "text-gray-500 ring-white/10" : "text-gray-400 ring-black/[0.06]")}>{walletType}</span>
+                            <ChevronRight size={14} className={darkMode ? "text-gray-600" : "text-gray-300"} />
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{walletType}</span>
-                            <ChevronRight className={darkMode ? 'text-gray-600' : 'text-gray-400'} size={20} />
-                        </div>
-                    </button>
-                </div>
+                    }
+                />
             </div>
 
-            {/* Logout Button */}
-            <button
-                onClick={onLogout}
-                className={`w-full ${darkMode ? 'bg-red-950 text-red-400 hover:bg-red-900' : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'} rounded-xl p-4 flex items-center justify-center gap-2 transition font-medium`}
-            >
-                <LogOut size={20} />
-                {language === 'ar' ? 'تسجيل الخروج' : 'Logout'}
-            </button>
+            {/* Logout */}
+            <div className="glass-card overflow-hidden">
+                <button
+                    onClick={onLogout}
+                    className={cn(
+                        "w-full px-4 py-3.5 flex items-center justify-center gap-2 text-sm font-semibold transition-all active:scale-[0.99]",
+                        darkMode ? "text-red-400 hover:bg-white/[0.03]" : "text-red-500 hover:bg-black/[0.02]"
+                    )}
+                >
+                    <LogOut size={16} strokeWidth={2} />
+                    {language === 'ar' ? 'تسجيل الخروج' : 'Logout'}
+                </button>
+            </div>
         </div>
     );
 }
-

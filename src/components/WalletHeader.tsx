@@ -1,5 +1,6 @@
 import React from 'react';
 import { Copy, Check, ChevronDown } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface WalletHeaderProps {
     darkMode: boolean;
@@ -18,36 +19,40 @@ export default function WalletHeader({
     darkMode, language, walletType, activeTab, totalBalance, walletAddress, copied, handleCopy, accountName, onAccountsClick
 }: WalletHeaderProps) {
     return (
-        <div className={`${darkMode ? 'bg-gradient-to-r from-gray-900 to-black' : 'bg-gradient-to-r from-blue-600 to-indigo-600'} p-6 text-white`}>
-            <div className="flex justify-between items-center mb-6">
-                <button onClick={onAccountsClick} className="flex items-center gap-2 hover:bg-white/10 px-3 py-1.5 rounded-lg transition -ml-2 text-left">
-                    <h1 className="text-xl font-bold truncate max-w-[200px]">{accountName}</h1>
-                    <ChevronDown size={20} className="opacity-80" />
+        <div className={cn("px-5 pt-5 pb-5", darkMode ? "bg-gradient-to-b from-[hsl(228,25%,12%)] via-[hsl(228,20%,9%)] to-transparent" : "bg-gradient-to-b from-blue-600 to-blue-500 text-white")}>
+            <div className="flex justify-between items-center mb-5">
+                <button onClick={onAccountsClick} className="flex items-center gap-1.5 hover:bg-white/10 px-2.5 py-1.5 rounded-xl transition -ml-1.5 text-left">
+                    <span className={cn("text-base font-bold truncate max-w-[180px]", darkMode ? "text-white" : "text-white")}>{accountName}</span>
+                    <ChevronDown size={16} className="opacity-60" />
                 </button>
-                <div className={`${darkMode ? 'bg-white/5' : 'bg-white/20'} backdrop-blur-sm px-3 py-1 rounded-full text-sm font-mono`}>
+                <div className={cn("px-2.5 py-1 rounded-lg text-[11px] font-semibold tracking-wide uppercase ring-1", darkMode ? "bg-white/5 text-gray-400 ring-white/10" : "bg-white/20 text-white/90 ring-white/20")}>
                     {walletType}
                 </div>
             </div>
 
             {activeTab === 'home' && (
-                <>
-                    <div className="text-center mb-4">
-                        <p className="text-sm opacity-80 mb-2">{language === 'ar' ? 'الرصيد الإجمالي' : 'Total Balance'}</p>
-                        <h2 className="text-4xl font-bold mb-1">${totalBalance}</h2>
-                        <p className="text-sm opacity-90">USD</p>
-                    </div>
+                <div className="text-center">
+                    <p className={cn("text-[11px] font-medium uppercase tracking-wider mb-2", darkMode ? "text-gray-500" : "text-white/60")}>
+                        {language === 'ar' ? 'الرصيد الإجمالي' : 'Total Balance'}
+                    </p>
+                    <h2 className={cn("text-[36px] font-extrabold tracking-tight leading-none mb-1", darkMode ? "text-white" : "text-white")}>
+                        ${totalBalance}
+                    </h2>
+                    <p className={cn("text-xs font-medium mb-4", darkMode ? "text-gray-500" : "text-white/50")}>USD</p>
 
-                    <div
+                    <button
                         onClick={handleCopy}
-                        className={`mx-auto w-fit ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-white/20 hover:bg-white/30'} backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2 cursor-pointer transition-all active:scale-95`}
+                        className={cn(
+                            "mx-auto flex items-center gap-2 px-4 py-2 rounded-full text-xs font-medium cursor-pointer transition-all active:scale-95 ring-1",
+                            darkMode ? "bg-white/5 hover:bg-white/8 text-gray-400 ring-white/10" : "bg-white/15 hover:bg-white/25 text-white/80 ring-white/20"
+                        )}
                     >
-                        <Copy size={14} className="opacity-70" />
-                        <span className="text-sm font-mono font-medium tracking-tight">
-                            {walletAddress.slice(0, 4)}••••{walletAddress.slice(-4)}
+                        {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} className="opacity-60" />}
+                        <span className="font-mono tracking-tight">
+                            {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
                         </span>
-                        {copied && <Check size={14} className="text-green-300" />}
-                    </div>
-                </>
+                    </button>
+                </div>
             )}
         </div>
     );

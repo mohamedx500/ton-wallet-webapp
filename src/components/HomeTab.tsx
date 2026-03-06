@@ -1,90 +1,82 @@
 import React from 'react';
-import { Send, ArrowDownToLine, Wallet, ChevronRight, ArrowRightLeft } from 'lucide-react';
+import { ArrowUp, ArrowDown, ArrowLeftRight, Users } from 'lucide-react';
+import { Send, Download, RefreshCw } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface HomeTabProps {
     darkMode: boolean;
     language: string;
     setShowSendModal: (v: boolean) => void;
     setShowReceiveModal: (v: boolean) => void;
-    setShowBuyModal: (v: boolean) => void;
     setShowSwapModal: (v: boolean) => void;
+    onMultiSendClick: () => void;
     tokens: any[];
     onTokenClick: (token: any) => void;
 }
 
-export default function HomeTab({ darkMode, language, setShowSendModal, setShowReceiveModal, setShowBuyModal, setShowSwapModal, tokens, onTokenClick }: HomeTabProps) {
+const actions = [
+    { id: 'send', icon: ArrowUp, labelEn: 'Send', labelAr: 'إرسال' },
+    { id: 'receive', icon: Download, labelEn: 'Receive', labelAr: 'استلام' },
+    { id: 'swap', icon: RefreshCw, labelEn: 'Swap', labelAr: 'تبديل' },
+    { id: 'multisend', icon: Users, labelEn: 'Multi-Send', labelAr: 'إرسال متعدد' },
+];
+
+export default function HomeTab({ darkMode, language, setShowSendModal, setShowReceiveModal, setShowSwapModal, onMultiSendClick, tokens, onTokenClick }: HomeTabProps) {
+    const actionHandlers: Record<string, () => void> = {
+        send: () => setShowSendModal(true),
+        receive: () => setShowReceiveModal(true),
+        swap: () => setShowSwapModal(true),
+        multisend: onMultiSendClick,
+    };
+
     return (
         <>
-            <div className="grid grid-cols-4 gap-2 p-6">
-                <button
-                    onClick={() => setShowSendModal(true)}
-                    className={`flex flex-col items-center justify-center p-3 ${darkMode ? 'bg-blue-950/50' : 'bg-blue-50'} rounded-2xl ${darkMode ? 'hover:bg-blue-950/70' : 'hover:bg-blue-100'} transition`}
-                >
-                    <div className={`w-10 h-10 ${darkMode ? 'bg-blue-900' : 'bg-blue-600'} rounded-full flex items-center justify-center mb-1.5`}>
-                        <Send size={18} className="text-white" />
-                    </div>
-                    <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        {language === 'ar' ? 'إرسال' : 'Send'}
-                    </span>
-                </button>
-
-                <button
-                    onClick={() => setShowReceiveModal(true)}
-                    className={`flex flex-col items-center justify-center p-3 ${darkMode ? 'bg-green-950/50' : 'bg-green-50'} rounded-2xl ${darkMode ? 'hover:bg-green-950/70' : 'hover:bg-green-100'} transition`}
-                >
-                    <div className={`w-10 h-10 ${darkMode ? 'bg-green-900' : 'bg-green-600'} rounded-full flex items-center justify-center mb-1.5`}>
-                        <ArrowDownToLine size={18} className="text-white" />
-                    </div>
-                    <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        {language === 'ar' ? 'استلام' : 'Receive'}
-                    </span>
-                </button>
-
-                <button
-                    onClick={() => setShowBuyModal(true)}
-                    className={`flex flex-col items-center justify-center p-3 ${darkMode ? 'bg-purple-950/50' : 'bg-purple-50'} rounded-2xl ${darkMode ? 'hover:bg-purple-950/70' : 'hover:bg-purple-100'} transition`}
-                >
-                    <div className={`w-10 h-10 ${darkMode ? 'bg-purple-900' : 'bg-purple-600'} rounded-full flex items-center justify-center mb-1.5`}>
-                        <Wallet size={18} className="text-white" />
-                    </div>
-                    <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        {language === 'ar' ? 'شراء' : 'Buy'}
-                    </span>
-                </button>
-
-                <button
-                    onClick={() => setShowSwapModal(true)}
-                    className={`flex flex-col items-center justify-center p-3 ${darkMode ? 'bg-orange-950/50' : 'bg-orange-50'} rounded-2xl ${darkMode ? 'hover:bg-orange-950/70' : 'hover:bg-orange-100'} transition`}
-                >
-                    <div className={`w-10 h-10 ${darkMode ? 'bg-orange-900' : 'bg-orange-500'} rounded-full flex items-center justify-center mb-1.5`}>
-                        <ArrowRightLeft size={18} className="text-white" />
-                    </div>
-                    <span className={`text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        {language === 'ar' ? 'تبديل' : 'Swap'}
-                    </span>
-                </button>
+            {/* Action Buttons - in a glass card */}
+            <div className="px-5 pt-5 pb-3">
+                <div className={cn("glass-card p-3 grid grid-cols-4 gap-2")}>
+                    {actions.map(({ id, icon: Icon, labelEn, labelAr }) => (
+                        <button
+                            key={id}
+                            onClick={actionHandlers[id]}
+                            className={cn(
+                                "flex flex-col items-center justify-center py-3 rounded-xl transition-all active:scale-95",
+                                darkMode ? "hover:bg-white/5" : "hover:bg-black/[0.03]"
+                            )}
+                        >
+                            <div className={cn(
+                                "w-12 h-12 rounded-2xl flex items-center justify-center mb-1.5",
+                                darkMode ? "bg-blue-500/10 text-blue-400 ring-1 ring-blue-500/20" : "bg-blue-500 text-white shadow-md shadow-blue-500/20"
+                            )}>
+                                <Icon size={22} strokeWidth={2} />
+                            </div>
+                            <span className={cn("text-xs font-semibold", darkMode ? "text-gray-400" : "text-gray-600")}>
+                                {language === 'ar' ? labelAr : labelEn}
+                            </span>
+                        </button>
+                    ))}
+                </div>
             </div>
 
-            <div className="px-6 pb-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+            {/* Token List */}
+            <div className="px-5 pb-6">
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className={cn("text-sm font-bold", darkMode ? "text-gray-300" : "text-gray-800")}>
                         {language === 'ar' ? 'التوكينات' : 'Tokens'}
                     </h3>
-                    <button className={`text-sm ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'} flex items-center gap-1`}>
-                        {language === 'ar' ? 'إضافة' : 'Add'}
-                        <ChevronRight size={16} />
-                    </button>
                 </div>
 
-                <div className="space-y-3">
+                <div className={cn("glass-card divide-y overflow-hidden", darkMode ? "divide-white/[0.06]" : "divide-black/[0.04]")}>
                     {tokens.map((token, idx) => (
-                        <div
+                        <button
                             key={idx}
                             onClick={() => onTokenClick(token)}
-                            className={`flex items-center justify-between p-4 ${darkMode ? 'bg-gray-900 hover:bg-gray-800' : 'bg-gray-50 hover:bg-gray-100'} rounded-xl transition cursor-pointer`}
+                            className={cn(
+                                "w-full flex items-center justify-between px-4 py-3.5 transition-all active:scale-[0.99] text-left",
+                                darkMode ? "hover:bg-white/[0.03]" : "hover:bg-black/[0.02]"
+                            )}
                         >
                             <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-full flex items-center justify-center text-xl shadow-sm overflow-hidden`}>
+                                <div className={cn("w-10 h-10 rounded-full flex items-center justify-center text-lg overflow-hidden flex-shrink-0", darkMode ? "bg-white/5 ring-1 ring-white/10" : "bg-gray-50 ring-1 ring-black/[0.06]")}>
                                     {token.icon && token.icon.startsWith && token.icon.startsWith('http') ? (
                                         <img
                                             src={token.icon}
@@ -100,15 +92,15 @@ export default function HomeTab({ darkMode, language, setShowSendModal, setShowR
                                     )}
                                 </div>
                                 <div>
-                                    <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>{token.name}</p>
-                                    <p className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{token.symbol}</p>
+                                    <p className={cn("text-sm font-semibold", darkMode ? "text-white" : "text-gray-900")}>{token.name}</p>
+                                    <p className={cn("text-xs", darkMode ? "text-gray-500" : "text-gray-400")}>{token.symbol}</p>
                                 </div>
                             </div>
-                            <div className="text-left">
-                                <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{token.balance}</p>
-                                <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{token.value}</p>
+                            <div className="text-right">
+                                <p className={cn("text-sm font-bold tabular-nums", darkMode ? "text-white" : "text-gray-900")}>{token.balance}</p>
+                                <p className={cn("text-xs tabular-nums", darkMode ? "text-gray-500" : "text-gray-400")}>{token.value}</p>
                             </div>
-                        </div>
+                        </button>
                     ))}
                 </div>
             </div>

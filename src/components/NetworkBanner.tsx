@@ -48,17 +48,17 @@ export default function NetworkBanner({ darkMode = false }: NetworkBannerProps) 
     const getBannerColors = () => {
         if (isOffline) {
             return darkMode
-                ? 'bg-gradient-to-r from-red-900/95 to-red-800/95 border-red-700'
-                : 'bg-gradient-to-r from-red-500 to-red-600 border-red-400';
+                ? 'bg-red-950/90 border-red-800/50'
+                : 'bg-red-500/95 border-red-400/50';
         }
         if (isWeak) {
             return darkMode
-                ? 'bg-gradient-to-r from-amber-900/95 to-orange-900/95 border-amber-700'
-                : 'bg-gradient-to-r from-amber-500 to-orange-500 border-amber-400';
+                ? 'bg-amber-950/90 border-amber-800/50'
+                : 'bg-amber-500/95 border-amber-400/50';
         }
         return darkMode
-            ? 'bg-gradient-to-r from-blue-900/95 to-indigo-900/95 border-blue-700'
-            : 'bg-gradient-to-r from-blue-500 to-indigo-500 border-blue-400';
+            ? 'bg-blue-950/90 border-blue-800/50'
+            : 'bg-blue-500/95 border-blue-400/50';
     };
 
     const getIcon = () => {

@@ -129,10 +129,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                 setLastRefresh(0); // Reset cooldown to force the refresh
                 refreshData();
             };
-            setTimeout(forceRefresh, 2000);  // After 2 seconds (faster initial check)
             setTimeout(forceRefresh, 5000);  // After 5 seconds
-            setTimeout(forceRefresh, 10000); // After 10 seconds
-            setTimeout(forceRefresh, 20000); // After 20 seconds
+            setTimeout(forceRefresh, 15000); // After 15 seconds
             return res;
         } catch (e) {
             throw e;
@@ -143,7 +141,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
     // Track last refresh to debounce
     const [lastRefresh, setLastRefresh] = useState<number>(0);
-    const REFRESH_COOLDOWN = 5000; // 5 second cooldown between refreshes
+    const REFRESH_COOLDOWN = 15000; // Increased to 15 seconds to be safer with rate limits
 
     const refreshData = async () => {
         if (!walletAddress) return;
@@ -339,7 +337,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (isLoggedIn && walletAddress) {
             refreshData();
-            const interval = setInterval(refreshData, 60000); // 60 seconds to avoid rate limits
+            const interval = setInterval(refreshData, 120000); // 2 minutes to avoid rate limits during long operations
             return () => clearInterval(interval);
         }
     }, [isLoggedIn, walletAddress]);

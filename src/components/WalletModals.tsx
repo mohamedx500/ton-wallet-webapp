@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X, Copy, ExternalLink, ArrowDownToLine, Send, Check, Eye, EyeOff, Loader2, Share2, Wallet, TriangleAlert, ChevronRight, RefreshCw, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
+import { X, Copy, ExternalLink, ArrowDown, ArrowUp, Check, Eye, EyeOff, Loader2, Share2, Wallet, TriangleAlert, ChevronRight, ArrowLeftRight, XCircle, Lock, TrendingUp } from 'lucide-react';
+import { cn } from '../lib/utils';
 import { TON_TOKENS } from '../services/SwapService';
 
 interface BaseModalProps {
@@ -47,6 +49,263 @@ interface SelectWalletTypeModalProps {
     language: string;
 }
 
+// CoinGecko ID mapping for price charts
+const COINGECKO_IDS: Record<string, string> = {
+    'TON': 'the-open-network',
+    'USDT': 'tether',
+    'USDC': 'usd-coin',
+    'BTC': 'bitcoin',
+    'ETH': 'ethereum',
+    'NOT': 'notcoin',
+    'DOGS': 'dogs-2',
+    'MAJOR': 'major',
+    'HMSTR': 'hamster-kombat',
+};
+
+const STABLECOINS = ['USDT', 'USDC', 'DAI', 'TUSD', 'BUSD', 'USDP', 'FRAX'];
+
+const TIME_PERIODS = [
+    { id: '15m', label: '15m', days: '1', note: '15 min' },
+    { id: '1h', label: '1H', days: '1', note: '1 hour' },
+    { id: '4h', label: '4H', days: '1', note: '4 hours' },
+    { id: '1d', label: '1D', days: '1', note: '1 day' },
+    { id: '1w', label: '1W', days: '7', note: '7 days' },
+    { id: '1m', label: '1M', days: '30', note: '30 days' },
+    { id: 'all', label: 'ALL', days: '365', note: '1 year' },
+] as const;
+
+interface PriceSparklineProps {
+    symbol: string;
+    darkMode: boolean;
+    currentPrice?: number;
+    diff?: string;
+}
+
+function PriceSparkline({ symbol, darkMode, currentPrice, diff }: PriceSparklineProps) {
+    const [rawPrices, setRawPrices] = useState<[number, number][]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+    const [period, setPeriod] = useState<string>('1d');
+    const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+    const svgRef = useRef<SVGSVGElement>(null);
+
+    useEffect(() => {
+        setLoading(true);
+        setError(false);
+        setHoverIdx(null);
+
+        const cgId = COINGECKO_IDS[symbol];
+        if (!cgId) { setLoading(false); setError(true); return; }
+
+        const cfg = TIME_PERIODS.find(t => t.id === period) || TIME_PERIODS[4];
+
+        fetch(`https://api.coingecko.com/api/v3/coins/${cgId}/market_chart?vs_currency=usd&days=${cfg.days}`)
+            .then(r => {
+                if (!r.ok) throw new Error('API error');
+                return r.json();
+            })
+            .then(data => {
+                if (data.error) { setError(true); setLoading(false); return; }
+                if (data.prices && Array.isArray(data.prices) && data.prices.length > 0) {
+                    let pts = data.prices as [number, number][];
+                    const now = Date.now();
+                    if (period === '15m') pts = pts.filter(p => now - p[0] <= 15 * 60 * 1000);
+                    else if (period === '1h') pts = pts.filter(p => now - p[0] <= 60 * 60 * 1000);
+                    else if (period === '4h') pts = pts.filter(p => now - p[0] <= 4 * 60 * 60 * 1000);
+
+                    if (pts.length < 2) {
+                        // If filtered too aggressively, take last N points from the full dataset
+                        const needed = period === '15m' ? 4 : period === '1h' ? 12 : 20;
+                        pts = data.prices.slice(-Math.min(needed, data.prices.length));
+                    }
+
+                    const step = Math.max(1, Math.floor(pts.length / 80));
+                    setRawPrices(pts.filter((_, i) => i % step === 0 || i === pts.length - 1));
+                } else {
+                    setError(true);
+                }
+                setLoading(false);
+            })
+            .catch(() => { setError(true); setLoading(false); });
+    }, [symbol, period]);
+
+    const prices = rawPrices.map(p => p[1]);
+    const isUp = prices.length >= 2 ? prices[prices.length - 1] >= prices[0] : !diff?.includes('-');
+    const pctChange = prices.length >= 2 ? ((prices[prices.length - 1] - prices[0]) / prices[0] * 100) : 0;
+
+    const formatTime = (ts: number) => {
+        const d = new Date(ts);
+        if (period === '15m' || period === '1h' || period === '4h' || period === '1d') return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (period === '1w') return d.toLocaleDateString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+        return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    };
+
+    // Shared price header (always visible)
+    const priceHeader = (
+        <div className="flex items-center justify-between mb-3">
+            <div>
+                {hoverIdx !== null && prices.length > 0 ? (
+                    <>
+                        <span className={cn("text-2xl font-bold tabular-nums", darkMode ? "text-white" : "text-black")}>
+                            ${(hoverIdx !== null ? rawPrices[hoverIdx]?.[1] : currentPrice)?.toFixed(currentPrice && currentPrice < 0.01 ? 6 : 2)}
+                        </span>
+                        <p className={cn("text-xs mt-0.5 font-medium", darkMode ? "text-gray-500" : "text-gray-600")}>
+                            {formatTime(rawPrices[hoverIdx]?.[0] || 0)}
+                        </p>
+                    </>
+                ) : (
+                    <>
+                        <span className={cn("text-2xl font-bold tabular-nums", darkMode ? "text-white" : "text-black")}>
+                            ${currentPrice?.toFixed(currentPrice < 0.01 ? 6 : 2) || '—'}
+                        </span>
+                        <p className={cn("text-xs mt-0.5 font-medium", darkMode ? "text-gray-500" : "text-gray-600")}>
+                            Current Price
+                        </p>
+                    </>
+                )}
+            </div>
+            <div className={cn(
+                "flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold",
+                (hoverIdx !== null ? (rawPrices[hoverIdx]?.[1] || 0) >= (rawPrices[0]?.[1] || 0) : isUp)
+                    ? "text-green-500 bg-green-500/10"
+                    : "text-red-500 bg-red-500/10"
+            )}>
+                {(hoverIdx !== null ? (rawPrices[hoverIdx]?.[1] || 0) >= (rawPrices[0]?.[1] || 0) : isUp)
+                    ? <ArrowDown className="rotate-180" size={12} />
+                    : <ArrowDown size={12} />
+                }
+                <span className="tabular-nums">
+                    {hoverIdx !== null && prices.length >= 2
+                        ? `${Math.abs(((rawPrices[hoverIdx]?.[1] || 0) - rawPrices[0][1]) / rawPrices[0][1] * 100).toFixed(2)}%`
+                        : diff ? String(diff).replace('-', '') : `${Math.abs(pctChange).toFixed(2)}%`
+                    }
+                </span>
+            </div>
+        </div>
+    );
+
+    // Time period selector with animated indicator
+    const periodSelector = (
+        <div className={cn("p-1 flex gap-0.5 rounded-xl mb-3", darkMode ? "bg-white/[0.03] ring-1 ring-white/[0.06]" : "bg-gray-100/60 ring-1 ring-black/[0.03]")}>
+            {TIME_PERIODS.map(t => (
+                <button
+                    key={t.id}
+                    onClick={() => setPeriod(t.id)}
+                    className={cn(
+                        "relative flex-1 py-1 rounded-lg text-[10px] font-bold transition-colors z-[1]",
+                        period === t.id ? "text-white" : darkMode ? "text-gray-500 hover:text-gray-300" : "text-gray-400 hover:text-gray-600"
+                    )}
+                >
+                    {period === t.id && (
+                        <motion.div
+                            layoutId="chartPeriodBg"
+                            className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 shadow-sm"
+                            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                        />
+                    )}
+                    <span className="relative z-[1]">{t.label}</span>
+                </button>
+            ))}
+        </div>
+    );
+
+    if (loading) {
+        return (
+            <div className="w-full">
+                {priceHeader}
+                {periodSelector}
+                <div className="flex items-center justify-center h-24">
+                    <Loader2 size={18} className={cn("animate-spin", darkMode ? "text-gray-600" : "text-gray-300")} />
+                </div>
+            </div>
+        );
+    }
+
+    if (error || prices.length < 2) {
+        return (
+            <div className="w-full">
+                {priceHeader}
+                {periodSelector}
+                <div className={cn("flex items-center justify-center h-24 text-xs", darkMode ? "text-gray-600" : "text-gray-400")}>
+                    No data available
+                </div>
+            </div>
+        );
+    }
+
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const range = max - min || 1;
+    const w = 300;
+    const h = 90;
+
+    const pointCoords = prices.map((p, i) => ({
+        x: (i / (prices.length - 1)) * w,
+        y: h - ((p - min) / range) * (h - 8) - 4,
+        price: p,
+        time: rawPrices[i]?.[0] || 0,
+    }));
+
+    const polyPoints = pointCoords.map(p => `${p.x},${p.y}`).join(' ');
+    const lineColor = isUp ? (darkMode ? '#22c55e' : '#16a34a') : (darkMode ? '#ef4444' : '#dc2626');
+    const gradientId = `spark-${symbol}-${period}`;
+
+    const handleSvgInteraction = (e: React.MouseEvent<SVGSVGElement> | React.TouchEvent<SVGSVGElement>) => {
+        if (!svgRef.current || pointCoords.length === 0) return;
+        const rect = svgRef.current.getBoundingClientRect();
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const relX = (clientX - rect.left) / rect.width;
+        const idx = Math.round(relX * (pointCoords.length - 1));
+        setHoverIdx(Math.max(0, Math.min(idx, pointCoords.length - 1)));
+    };
+
+    const hoverPoint = hoverIdx !== null ? pointCoords[hoverIdx] : null;
+
+    return (
+        <div className="w-full">
+            {priceHeader}
+            {periodSelector}
+
+            {/* Chart */}
+            <svg
+                ref={svgRef}
+                viewBox={`0 0 ${w} ${h}`}
+                className="w-full h-24 cursor-crosshair"
+                preserveAspectRatio="none"
+                onMouseMove={handleSvgInteraction}
+                onTouchMove={handleSvgInteraction}
+                onMouseLeave={() => setHoverIdx(null)}
+                onTouchEnd={() => setHoverIdx(null)}
+            >
+                <defs>
+                    <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={lineColor} stopOpacity="0.2" />
+                        <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+                    </linearGradient>
+                </defs>
+                <polygon
+                    points={`0,${h} ${polyPoints} ${w},${h}`}
+                    fill={`url(#${gradientId})`}
+                />
+                <polyline
+                    points={polyPoints}
+                    fill="none"
+                    stroke={lineColor}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                />
+                {hoverPoint && (
+                    <>
+                        <line x1={hoverPoint.x} y1={0} x2={hoverPoint.x} y2={h} stroke={darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'} strokeWidth="1" strokeDasharray="3,3" />
+                        <circle cx={hoverPoint.x} cy={hoverPoint.y} r="4" fill={lineColor} stroke={darkMode ? '#1a1a2e' : '#fff'} strokeWidth="2" />
+                    </>
+                )}
+            </svg>
+        </div>
+    );
+}
+
 interface TokenDetailsModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -84,15 +343,15 @@ export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMo
     });
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 pointer-events-auto" onClick={onClose}>
-            <div className={`w-full max-w-md ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-3xl p-6 h-[80vh] flex flex-col animate-slide-up`} onClick={(e) => e.stopPropagation()}>
-                <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6 shrink-0"></div>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end justify-center z-50 pointer-events-auto" onClick={onClose}>
+            <div className={cn("w-full max-w-md rounded-t-3xl p-6 h-[80vh] flex flex-col animate-slide-up", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
+                <div className={cn("w-10 h-1 rounded-full mx-auto mb-6 shrink-0", darkMode ? "bg-white/10" : "bg-gray-200")}></div>
 
                 {/* Header */}
                 {/* Header */}
                 <div className="flex flex-col items-center mb-8 shrink-0">
-                    <div className="w-24 h-24 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center p-1 mb-4 shadow-lg ring-1 ring-black/5 dark:ring-white/10">
-                        <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center bg-white dark:bg-gray-900">
+                    <div className={cn("w-20 h-20 rounded-full flex items-center justify-center p-1 mb-4 ring-1", darkMode ? "bg-white/5 ring-white/10" : "bg-gray-50 ring-black/5")}>
+                        <div className={cn("w-full h-full rounded-full overflow-hidden flex items-center justify-center", darkMode ? "bg-white/5" : "bg-white")}>
                             {token.icon && token.icon.startsWith && token.icon.startsWith('http') ? (
                                 <img src={token.icon} alt={token.symbol} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }} />
                             ) : (
@@ -101,57 +360,33 @@ export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMo
                         </div>
                     </div>
 
-                    <h3 className={`text-3xl font-extrabold mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    <h3 className={cn("text-3xl font-bold mb-1", darkMode ? "text-white" : "text-black")}>
                         {token.balance} <span className="text-blue-500">{token.symbol}</span>
                     </h3>
 
-                    <p className={`text-lg font-medium mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <p className={cn("text-base font-semibold", darkMode ? "text-gray-400" : "text-gray-600")}>
                         {token.value}
                     </p>
-
-                    {/* Price & Diff Card */}
-                    <div className="flex flex-col items-center mt-2">
-                        <div className={`px-5 py-3 rounded-2xl border flex items-center gap-4 shadow-sm transition-all hover:shadow-md ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-100 bg-white'}`}>
-                            <div className="flex flex-col items-center">
-                                <span className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>Current Price</span>
-                                <span className={`text-xl font-bold tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>${token.price?.toFixed(2)}</span>
-                            </div>
-
-                            <div className={`h-8 w-px ${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}></div>
-
-                            {token.diff && (
-                                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-sm ${String(token.diff).includes('-')
-                                    ? 'text-red-500 bg-red-500/10'
-                                    : 'text-green-500 bg-green-500/10'
-                                    }`}>
-                                    {String(token.diff).includes('-')
-                                        ? <ArrowDownToLine size={16} />
-                                        : <ArrowDownToLine className="rotate-180" size={16} />
-                                    }
-                                    <span dir="ltr">{String(token.diff).replace('-', '')}</span>
-                                </div>
-                            )}
-                        </div>
-                    </div>
                 </div>
 
+                {/* Price Chart with integrated price display - hidden for stablecoins */}
+                {!STABLECOINS.includes(token.symbol) && (
+                    <div className="glass-card p-4 mb-4 shrink-0">
+                        <PriceSparkline symbol={token.symbol} darkMode={darkMode} currentPrice={token.price} diff={token.diff} />
+                    </div>
+                )}
+
                 {/* Actions */}
-                <div className="flex gap-4 mb-8 shrink-0">
+                <div className="flex gap-3 mb-6 shrink-0">
                     <button
-                        onClick={() => {
-                            onClose();
-                            onSend?.();
-                        }}
-                        className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition"
+                        onClick={() => { onClose(); onSend?.(); }}
+                        className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 rounded-2xl font-semibold text-sm hover:from-blue-600 hover:to-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98]"
                     >
                         {language === 'ar' ? 'إرسال' : 'Send'}
                     </button>
                     <button
-                        onClick={() => {
-                            onClose();
-                            onReceive?.();
-                        }}
-                        className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition"
+                        onClick={() => { onClose(); onReceive?.(); }}
+                        className="flex-1 bg-gradient-to-r from-green-500 to-green-600 text-white py-3 rounded-2xl font-semibold text-sm hover:from-green-600 hover:to-green-700 transition-all shadow-lg shadow-green-500/20 active:scale-[0.98]"
                     >
                         {language === 'ar' ? 'استلام' : 'Receive'}
                     </button>
@@ -159,47 +394,52 @@ export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMo
 
                 {/* History */}
                 <div className="flex-1 overflow-auto no-scrollbar">
-                    <h4 className={`font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                    <h4 className={cn("font-bold text-sm mb-3", darkMode ? "text-white" : "text-gray-800")}>
                         {language === 'ar' ? 'النشاط الأخير' : 'Recent Activity'}
                     </h4>
                     {tokenTxs.length > 0 ? (
-                        <div className="space-y-3">
+                        <div className={cn("glass-card divide-y overflow-hidden", darkMode ? "divide-white/[0.06]" : "divide-black/[0.04]")}>
                             {tokenTxs.map((tx, i) => (
-                                <div key={i} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                                <div key={i} className={cn("flex items-center justify-between px-4 py-3", darkMode ? "hover:bg-white/[0.02]" : "hover:bg-black/[0.01]")}>
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.status === 'failed'
-                                            ? (darkMode ? 'bg-red-900/30 text-red-500' : 'bg-red-100 text-red-600')
-                                            : tx.type === 'received'
-                                                ? (darkMode ? 'bg-green-900/30 text-green-500' : 'bg-green-100 text-green-600')
-                                                : tx.type === 'swap'
-                                                    ? (darkMode ? 'bg-blue-900/30 text-blue-500' : 'bg-blue-100 text-blue-600')
-                                                    : (darkMode ? 'bg-gray-700/50 text-gray-400' : 'bg-gray-100 text-gray-600')
-                                            }`}>
-                                            {tx.status === 'failed' ? <AlertCircle size={18} /> :
-                                                tx.type === 'received' ? <ArrowDownToLine size={18} /> :
-                                                    tx.type === 'swap' ? <RefreshCw size={18} /> :
-                                                        <Send size={18} />}
+                                        <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center ring-1",
+                                            tx.status === 'failed'
+                                                ? (darkMode ? 'bg-red-500/10 text-red-400 ring-red-500/20' : 'bg-red-50 text-red-500 ring-red-100')
+                                                : tx.type === 'received'
+                                                    ? (darkMode ? 'bg-green-500/10 text-green-400 ring-green-500/20' : 'bg-green-50 text-green-600 ring-green-100')
+                                                    : tx.type === 'swap'
+                                                        ? (darkMode ? 'bg-blue-500/10 text-blue-400 ring-blue-500/20' : 'bg-blue-50 text-blue-600 ring-blue-100')
+                                                        : (darkMode ? 'bg-white/5 text-gray-400 ring-white/10' : 'bg-gray-50 text-gray-500 ring-gray-100')
+                                        )}>
+                                            {tx.status === 'failed' ? <XCircle size={16} /> :
+                                                tx.type === 'received' ? <ArrowDown size={16} /> :
+                                                    tx.type === 'swap' ? <ArrowLeftRight size={16} /> :
+                                                        <ArrowUp size={16} />}
                                         </div>
                                         <div>
-                                            <p className={`font-medium ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+                                            <p className={cn("text-sm font-semibold", darkMode ? "text-white" : "text-gray-800")}>
                                                 {tx.status === 'failed' ? (language === 'ar' ? 'فشل' : 'Failed') :
                                                     tx.type === 'received' ? (language === 'ar' ? 'استلام' : 'Received') :
                                                         tx.type === 'swap' ? (language === 'ar' ? 'مبادلة' : 'Swap') :
                                                             (language === 'ar' ? 'إرسال' : 'Sent')}
                                             </p>
-                                            <p className="text-xs text-gray-500">{tx.time}</p>
+                                            <p className={cn("text-[11px]", darkMode ? "text-gray-600" : "text-gray-400")}>{tx.time}</p>
                                         </div>
                                     </div>
-                                    <span className={`font-bold ${tx.status === 'failed' ? 'text-red-500' :
-                                        tx.type === 'received' ? 'text-green-500' : 'text-gray-500'
-                                        }`}>
+                                    <span className={cn("font-bold text-sm tabular-nums",
+                                        tx.status === 'failed' ? 'text-red-500' :
+                                        tx.type === 'received' ? 'text-green-500' :
+                                        darkMode ? 'text-white' : 'text-gray-900'
+                                    )}>
                                         {tx.type === 'received' ? '+' : tx.type === 'swap' ? '' : '-'}{tx.amount || '0.00'} {token.symbol}
                                     </span>
                                 </div>
                             ))}
                         </div>
                     ) : (
-                        <div className="text-center text-gray-500 py-8">No transactions</div>
+                        <div className={cn("glass-card text-center py-10", darkMode ? "text-gray-600" : "text-gray-400")}>
+                            <p className="text-sm">No transactions</p>
+                        </div>
                     )}
                 </div>
             </div>
@@ -219,32 +459,34 @@ export function SelectWalletTypeModal({ isOpen, onClose, currentType, onSelect, 
     ];
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50" onClick={onClose}>
-            <div className={`w-full max-w-md ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-3xl p-6 animate-slide-up`} onClick={(e) => e.stopPropagation()}>
-                <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6"></div>
-                <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'} mb-6`}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end justify-center z-50" onClick={onClose}>
+            <div className={cn("w-full max-w-md rounded-t-3xl p-6 animate-slide-up", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
+                <div className={cn("w-10 h-1 rounded-full mx-auto mb-5", darkMode ? "bg-white/10" : "bg-gray-200")}></div>
+                <h3 className={cn("text-base font-bold mb-4", darkMode ? "text-white" : "text-gray-900")}>
                     {language === 'ar' ? 'نوع المحفظة' : 'Wallet Version'}
                 </h3>
 
-                <div className="space-y-3">
+                <div className="space-y-1.5">
                     {types.map((t) => (
                         <button
                             key={t.id}
                             onClick={() => onSelect(t.id)}
-                            className={`w-full p-4 rounded-xl flex items-center justify-between border ${currentType === t.id
-                                ? (darkMode ? 'bg-blue-900/20 border-blue-500' : 'bg-blue-50 border-blue-500')
-                                : (darkMode ? 'bg-gray-800 border-transparent hover:bg-gray-700' : 'bg-gray-50 border-transparent hover:bg-gray-100')
-                                } transition`}
+                            className={cn(
+                                "w-full p-3.5 rounded-2xl flex items-center justify-between transition-all active:scale-[0.98]",
+                                currentType === t.id
+                                    ? darkMode ? "bg-blue-500/10 ring-1 ring-blue-500/30" : "bg-blue-50 ring-1 ring-blue-200"
+                                    : darkMode ? "hover:bg-white/5" : "hover:bg-gray-50"
+                            )}
                         >
                             <div className="text-left">
-                                <p className={`font-bold ${darkMode ? 'text-white' : 'text-gray-800'} ${currentType === t.id ? 'text-blue-500' : ''}`}>
+                                <p className={cn("text-sm font-semibold", currentType === t.id ? "text-blue-500" : darkMode ? "text-white" : "text-gray-900")}>
                                     {t.name}
                                 </p>
-                                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                <p className={cn("text-[11px]", darkMode ? "text-gray-500" : "text-gray-400")}>
                                     {t.desc}
                                 </p>
                             </div>
-                            {currentType === t.id && <Check className="text-blue-500" size={20} />}
+                            {currentType === t.id && <Check className="text-blue-500" size={16} />}
                         </button>
                     ))}
                 </div>
@@ -267,36 +509,37 @@ export function PasswordPromptModal({ isOpen, onClose, onConfirm, darkMode, lang
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-3xl p-6 animate-scale-up`} onClick={(e) => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className={cn("w-full max-w-sm rounded-3xl p-6 animate-scale-in", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-5">
+                    <h3 className={cn("text-base font-bold", darkMode ? "text-white" : "text-gray-900")}>
                         {language === 'ar' ? 'تأكيد كلمة المرور' : 'Confirm Password'}
                     </h3>
-                    <button onClick={onClose} className={`p-2 rounded-full ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
-                        <X size={20} />
+                    <button onClick={onClose} className={cn("p-1.5 rounded-xl transition", darkMode ? "hover:bg-white/5 text-gray-500" : "hover:bg-gray-100 text-gray-400")}>
+                        <X size={18} />
                     </button>
                 </div>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                        {language === 'ar' ? 'يرجى إدخال كلمة المرور لتأكيد المعاملة.' : 'Please enter your password to confirm transaction.'}
+                    <p className={cn("text-xs", darkMode ? "text-gray-500" : "text-gray-400")}>
+                        {language === 'ar' ? 'يرجى إدخال كلمة المرور لتأكيد المعاملة.' : 'Enter your password to confirm.'}
                     </p>
                     <div className="relative">
+                        <Lock size={16} className={cn("absolute left-4 top-1/2 -translate-y-1/2", darkMode ? "text-gray-500" : "text-gray-400")} />
                         <input
                             type={showPassword ? 'text' : 'password'}
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             placeholder={language === 'ar' ? 'كلمة المرور' : 'Password'}
-                            className={`w-full p-4 pr-12 rounded-xl ${darkMode ? 'bg-gray-800 text-white border-gray-700' : 'bg-gray-50 text-gray-900 border-gray-200'} border focus:ring-2 focus:ring-blue-500 outline-none`}
+                            className={cn("w-full pl-11 pr-12 py-3.5 rounded-2xl text-sm font-medium outline-none transition-all", darkMode ? "bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-blue-500/50" : "bg-white/70 border border-gray-200/80 text-gray-900 placeholder:text-gray-400 focus:border-blue-400")}
                             autoFocus
                         />
-                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-4 text-gray-500">
-                            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className={cn("absolute right-4 top-1/2 -translate-y-1/2", darkMode ? "text-gray-500 hover:text-gray-300" : "text-gray-400 hover:text-gray-600")}>
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                     </div>
-                    {error && <p className="text-red-500 text-sm">{error}</p>}
-                    <button disabled={isLoading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition flex justify-center">
-                        {isLoading ? <Loader2 className="animate-spin" /> : (language === 'ar' ? 'تأكيد' : 'Confirm')}
+                    {error && <p className="text-red-500 text-xs text-center font-medium">{error}</p>}
+                    <button disabled={isLoading} className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3.5 rounded-2xl font-semibold text-sm transition-all flex justify-center shadow-lg shadow-blue-500/20 active:scale-[0.98]">
+                        {isLoading ? <Loader2 size={20} className="animate-spin" /> : (language === 'ar' ? 'تأكيد' : 'Confirm')}
                     </button>
                 </form>
             </div>
@@ -356,24 +599,24 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-[32px] p-6 animate-scale-up shadow-2xl relative overflow-hidden`} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className={cn("w-full max-w-sm rounded-3xl p-6 animate-scale-in shadow-2xl relative overflow-hidden", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
 
                 {/* Header with Back Button */}
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-5">
                     {step > 1 ? (
-                        <button onClick={handleBack} className={`p-2 rounded-full ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
-                            <ArrowDownToLine className="rotate-90" size={20} />
+                        <button onClick={handleBack} className={cn("p-2 rounded-xl transition", darkMode ? "hover:bg-white/5 text-gray-500" : "hover:bg-gray-100 text-gray-400")}>
+                            <ArrowDown className="rotate-90" size={20} />
                         </button>
                     ) : <div className="w-9" />} {/* Spacer */}
 
-                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    <h3 className={cn("text-base font-bold", darkMode ? "text-white" : "text-gray-900")}>
                         {step === 1 && (language === 'ar' ? 'المستلم' : 'Recipient')}
                         {step === 2 && (language === 'ar' ? 'المبلغ' : 'Amount')}
                         {step === 3 && (language === 'ar' ? 'مراجعة' : 'Review')}
                     </h3>
 
-                    <button onClick={onClose} className={`p-2 rounded-full ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                    <button onClick={onClose} className={cn("p-2 rounded-xl transition", darkMode ? "hover:bg-white/5 text-gray-500" : "hover:bg-gray-100 text-gray-400")}>
                         <X size={20} />
                     </button>
                 </div>
@@ -384,31 +627,31 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
                     {/* STEP 1: Address & Comment */}
                     {step === 1 && (
                         <div className="space-y-4 flex-1">
-                            <div>
-                                <label className={`block text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase mb-2 ml-1`}>
+                            <div className="glass-card p-4">
+                                <label className={cn("block text-[10px] font-bold uppercase tracking-wider mb-2", darkMode ? "text-gray-500" : "text-gray-400")}>
                                     {language === 'ar' ? 'إلى عنوان' : 'To Address'}
                                 </label>
                                 <input
                                     type="text"
                                     placeholder={language === 'ar' ? 'العنوان أو النطاق (.ton)...' : 'Address or domain (.ton)...'}
                                     value={address}
-                                    onChange={(e) => setAddress(e.target.value)}
-                                    className={`w-full p-4 rounded-xl ${darkMode ? 'bg-gray-900 text-white placeholder-gray-600' : 'bg-gray-50 text-gray-900 placeholder-gray-400'} border-none focus:ring-2 focus:ring-blue-500 font-mono text-sm shadow-inner`}
+                                    onChange={(e) => { setAddress(e.target.value); setAddressError(''); }}
+                                    className={cn("w-full px-3.5 py-3 rounded-xl font-mono text-sm outline-none transition-all", darkMode ? "bg-white/5 text-white placeholder:text-gray-600 ring-1 ring-white/10 focus:ring-blue-500/50" : "bg-gray-50 text-gray-900 placeholder:text-gray-400 ring-1 ring-gray-200 focus:ring-blue-400")}
                                     autoFocus
                                 />
                                 {addressError && (
-                                    <p className="text-red-500 text-xs mt-1 ml-1">{addressError}</p>
+                                    <p className="text-red-500 text-[11px] mt-1.5 font-medium">{addressError}</p>
                                 )}
                             </div>
-                            <div>
-                                <label className={`block text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase mb-2 ml-1`}>
+                            <div className="glass-card p-4">
+                                <label className={cn("block text-[10px] font-bold uppercase tracking-wider mb-2", darkMode ? "text-gray-500" : "text-gray-400")}>
                                     {language === 'ar' ? 'تعليق (اختياري)' : 'Comment (Optional)'}
                                 </label>
                                 <textarea
                                     value={comment}
                                     onChange={(e) => setComment(e.target.value)}
                                     placeholder={language === 'ar' ? 'رسالة للمستلم...' : 'Message for recipient...'}
-                                    className={`w-full p-4 rounded-xl ${darkMode ? 'bg-gray-900 text-white placeholder-gray-600' : 'bg-gray-50 text-gray-900 placeholder-gray-400'} border-none focus:ring-2 focus:ring-blue-500 font-medium text-sm shadow-inner resize-none h-24`}
+                                    className={cn("w-full px-3.5 py-3 rounded-xl text-sm resize-none h-20 outline-none transition-all", darkMode ? "bg-white/5 text-white placeholder:text-gray-600 ring-1 ring-white/10 focus:ring-blue-500/50" : "bg-gray-50 text-gray-900 placeholder:text-gray-400 ring-1 ring-gray-200 focus:ring-blue-400")}
                                 />
                             </div>
                         </div>
@@ -416,72 +659,84 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
 
                     {/* STEP 2: Asset & Amount */}
                     {step === 2 && (
-                        <div className="space-y-6 flex-1">
+                        <div className="flex-1 flex flex-col">
                             {/* Token Selector */}
-                            <div>
-                                <label className={`block text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase mb-2 ml-1`}>
+                            <div className="mb-5">
+                                <label className={cn("block text-[10px] font-bold uppercase tracking-wider mb-2 ml-1", darkMode ? "text-gray-500" : "text-gray-400")}>
                                     {language === 'ar' ? 'العملة' : 'Asset'}
                                 </label>
-                                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+                                <div className="flex gap-2.5 overflow-x-auto no-scrollbar">
                                     <button
                                         onClick={() => setSelectedAsset(null)}
-                                        className={`flex items-center gap-2 px-4 py-2 rounded-full border ${!selectedAsset
-                                            ? 'bg-blue-600 border-blue-600 text-white'
-                                            : (darkMode ? 'bg-gray-900 border-gray-800 text-gray-400' : 'bg-white border-gray-200 text-gray-600')
-                                            } transition`}
+                                        className={cn(
+                                            "flex items-center gap-2 px-3 py-1.5 rounded-full transition-all flex-shrink-0",
+                                            !selectedAsset
+                                                ? darkMode ? "bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30" : "bg-blue-50 text-blue-600 ring-1 ring-blue-200"
+                                                : darkMode ? "bg-white/[0.04] text-gray-400 hover:bg-white/[0.07]" : "bg-gray-100/80 text-gray-500 hover:bg-gray-100"
+                                        )}
                                     >
-                                        <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center">
+                                        <div className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
                                             <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png" alt="TON" className="w-full h-full object-cover" />
                                         </div>
-                                        <span className="font-bold text-sm">TON</span>
+                                        <span className="font-semibold text-sm">TON</span>
                                     </button>
                                     {tokens.map((t, i) => t.symbol !== 'TON' && (
                                         <button
                                             key={i}
                                             onClick={() => setSelectedAsset(t)}
-                                            className={`flex items-center gap-2 px-4 py-2 rounded-full border ${selectedAsset?.symbol === t.symbol
-                                                ? 'bg-blue-600 border-blue-600 text-white'
-                                                : (darkMode ? 'bg-gray-900 border-gray-800 text-gray-400' : 'bg-white border-gray-200 text-gray-600')
-                                                } transition`}
+                                            className={cn(
+                                                "flex items-center gap-2 px-3 py-1.5 rounded-full transition-all flex-shrink-0",
+                                                selectedAsset?.symbol === t.symbol
+                                                    ? darkMode ? "bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30" : "bg-blue-50 text-blue-600 ring-1 ring-blue-200"
+                                                    : darkMode ? "bg-white/[0.04] text-gray-400 hover:bg-white/[0.07]" : "bg-gray-100/80 text-gray-500 hover:bg-gray-100"
+                                            )}
                                         >
-                                            <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center bg-white/10">
+                                            <div className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
                                                 {t.icon && t.icon.startsWith && t.icon.startsWith('http') ? (
                                                     <img src={t.icon} alt={t.symbol} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }} />
                                                 ) : (
-                                                    <span>{t.icon}</span>
+                                                    <span className="text-xs">{t.icon}</span>
                                                 )}
                                             </div>
-                                            <span className="font-bold text-sm">{t.symbol}</span>
+                                            <span className="font-semibold text-sm">{t.symbol}</span>
                                         </button>
                                     ))}
                                 </div>
                             </div>
 
-                            {/* Amount Input */}
-                            <div>
-                                <div className="flex justify-between items-end mb-2 ml-1">
-                                    <label className={`block text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'} uppercase`}>
-                                        {language === 'ar' ? 'المبلغ' : 'Amount'}
-                                    </label>
-                                    <button
-                                        onClick={() => setAmount(currentAsset.balance || '0')}
-                                        className={`text-xs font-semibold ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'} transition-colors cursor-pointer`}
-                                    >
-                                        Max: {currentAsset.balance}
-                                    </button>
-                                </div>
-                                <div className="relative">
-                                    <input
-                                        type="number"
-                                        placeholder="0.00"
-                                        value={amount}
-                                        onChange={(e) => setAmount(e.target.value)}
-                                        className={`w-full p-4 rounded-xl ${darkMode ? 'bg-gray-900 text-white placeholder-gray-600' : 'bg-gray-50 text-gray-900 placeholder-gray-400'} border-none focus:ring-2 focus:ring-blue-500 text-2xl font-bold shadow-inner`}
-                                        autoFocus
-                                    />
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-gray-500 pointer-events-none">
-                                        {currentAsset.symbol}
+                            {/* Amount Section */}
+                            <div className="flex-1 flex flex-col items-center justify-center">
+                                <div className="w-full mb-2">
+                                    <div className="flex justify-between items-center mb-1 px-1">
+                                        <span className={cn("text-[10px] font-bold uppercase tracking-wider", darkMode ? "text-gray-500" : "text-gray-400")}>
+                                            {language === 'ar' ? 'المبلغ' : 'Amount'}
+                                        </span>
+                                        <button
+                                            onClick={() => setAmount(currentAsset.balance || '0')}
+                                            className={cn("text-[11px] font-semibold transition-colors", darkMode ? "text-gray-500 hover:text-blue-400" : "text-gray-400 hover:text-blue-500")}
+                                        >
+                                            {language === 'ar' ? 'الحد الأقصى' : 'Max'}: {currentAsset.balance}
+                                        </button>
                                     </div>
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="number"
+                                            inputMode="decimal"
+                                            placeholder="0"
+                                            value={amount}
+                                            onChange={(e) => setAmount(e.target.value)}
+                                            style={{ MozAppearance: 'textfield' }}
+                                            className={cn("flex-1 min-w-0 text-4xl font-bold bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none", darkMode ? "text-white placeholder:text-gray-700" : "text-gray-900 placeholder:text-gray-300")}
+                                            autoFocus
+                                        />
+                                        <span className={cn("text-lg font-bold flex-shrink-0", darkMode ? "text-gray-500" : "text-gray-400")}>{currentAsset.symbol}</span>
+                                    </div>
+                                    <div className={cn("h-px w-full mt-2", darkMode ? "bg-white/10" : "bg-gray-200")} />
+                                    {amount && parseFloat(amount) > 0 && (
+                                        <p className={cn("text-xs mt-2 px-1", darkMode ? "text-gray-600" : "text-gray-400")}>
+                                            ≈ ${(parseFloat(amount) * (currentAsset.price || 0)).toFixed(2)} USD
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -489,67 +744,54 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
 
                     {/* STEP 3: Review */}
                     {step === 3 && (
-                        <div className="space-y-6 flex-1">
-                            <div className="flex flex-col items-center justify-center py-4">
-                                <div className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center mb-4 shadow-lg shadow-blue-500/30 ring-4 ring-blue-500/20 animate-scale-up">
-                                    <Send size={40} className="text-white ml-2" />
+                        <div className="space-y-5 flex-1">
+                            <div className="flex flex-col items-center justify-center py-3">
+                                <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center mb-3 shadow-lg shadow-blue-500/25">
+                                    <ArrowUp size={24} className="text-white" />
                                 </div>
-                                <h2 className={`text-lg font-medium ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                <h2 className={cn("text-sm font-medium", darkMode ? "text-gray-400" : "text-gray-500")}>
                                     {language === 'ar' ? 'تأكيد الإرسال' : 'Confirm sending'}
                                 </h2>
                             </div>
 
-                            <div className={`p-5 rounded-2xl ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-100'} border space-y-4`}>
+                            <div className={cn("glass-card divide-y overflow-hidden", darkMode ? "divide-white/[0.06]" : "divide-black/[0.04]")}>
                                 {/* Recipient */}
-                                <div className="flex justify-between items-center py-1">
-                                    <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{language === 'ar' ? 'المستلم' : 'Recipient'}</span>
-                                    <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        {address.slice(0, 4)}...{address.slice(-4)}
+                                <div className="flex justify-between items-center px-4 py-3">
+                                    <span className={cn("text-xs", darkMode ? "text-gray-500" : "text-gray-400")}>{language === 'ar' ? 'المستلم' : 'To'}</span>
+                                    <span className={cn("font-bold text-sm font-mono", darkMode ? "text-white" : "text-gray-900")}>
+                                        {address.slice(0, 6)}...{address.slice(-4)}
                                     </span>
                                 </div>
 
-                                {/* Full Address */}
-                                <div className="flex justify-between items-center py-1">
-                                    <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{language === 'ar' ? 'العنوان' : 'Recipient address'}</span>
-                                    <p className={`font-mono text-xs max-w-[150px] truncate text-right ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                        {address}
-                                    </p>
-                                </div>
-
-                                <div className={`h-px w-full ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} my-2`}></div>
-
                                 {/* Amount */}
-                                <div className="flex justify-between items-center py-1">
-                                    <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{language === 'ar' ? 'المبلغ' : 'Amount'}</span>
+                                <div className="flex justify-between items-center px-4 py-3">
+                                    <span className={cn("text-xs", darkMode ? "text-gray-500" : "text-gray-400")}>{language === 'ar' ? 'المبلغ' : 'Amount'}</span>
                                     <div className="text-right">
-                                        <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                        <span className={cn("font-bold text-base", darkMode ? "text-white" : "text-gray-900")}>
                                             {amount} {currentAsset.symbol}
                                         </span>
-                                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>≈ ${(parseFloat(amount) * (currentAsset.price || 0)).toFixed(2)}</p>
+                                        <p className={cn("text-[11px]", darkMode ? "text-gray-600" : "text-gray-400")}>≈ ${(parseFloat(amount) * (currentAsset.price || 0)).toFixed(2)}</p>
                                     </div>
                                 </div>
 
                                 {/* Fee */}
-                                <div className="flex justify-between items-center py-1">
-                                    <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{language === 'ar' ? 'الرسوم' : 'Fee'}</span>
+                                <div className="flex justify-between items-center px-4 py-3">
+                                    <span className={cn("text-xs", darkMode ? "text-gray-500" : "text-gray-400")}>{language === 'ar' ? 'الرسوم' : 'Fee'}</span>
                                     <div className="text-right">
-                                        <span className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        <span className={cn("font-semibold text-sm", darkMode ? "text-gray-300" : "text-gray-700")}>
                                             0.0055 TON
                                         </span>
-                                        <p className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>≈ $0.005</p>
+                                        <p className={cn("text-[11px]", darkMode ? "text-gray-600" : "text-gray-400")}>≈ $0.005</p>
                                     </div>
                                 </div>
 
                                 {comment && (
-                                    <>
-                                        <div className={`h-px w-full ${darkMode ? 'bg-gray-800' : 'bg-gray-200'} my-2`}></div>
-                                        <div className="flex justify-between items-start py-1">
-                                            <span className={`text-sm ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{language === 'ar' ? 'تعليق' : 'Comment'}</span>
-                                            <p className={`text-sm italic text-right max-w-[200px] break-words ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                                                "{comment}"
-                                            </p>
-                                        </div>
-                                    </>
+                                    <div className="flex justify-between items-start px-4 py-3">
+                                        <span className={cn("text-xs", darkMode ? "text-gray-500" : "text-gray-400")}>{language === 'ar' ? 'تعليق' : 'Comment'}</span>
+                                        <p className={cn("text-sm italic text-right max-w-[180px] break-words", darkMode ? "text-gray-400" : "text-gray-600")}>
+                                            "{comment}"
+                                        </p>
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -561,17 +803,17 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
                             <button
                                 onClick={handleNext}
                                 disabled={(!address || address.length < 3) && step === 1 || !amount && step === 2}
-                                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/30"
+                                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3.5 rounded-2xl font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20 active:scale-[0.98]"
                             >
                                 {language === 'ar' ? 'متابعة' : 'Continue'}
                             </button>
                         ) : (
                             <button
                                 onClick={() => onSend(address, amount, comment, selectedAsset)}
-                                className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2"
+                                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3.5 rounded-2xl font-semibold text-sm transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 active:scale-[0.98]"
                             >
                                 {language === 'ar' ? 'تأكيد وإرسال' : 'Confirm & Send'}
-                                <Send size={18} />
+                                <ArrowUp size={18} />
                             </button>
                         )}
                     </div>
@@ -603,28 +845,25 @@ export function ReceiveModal({ isOpen, onClose, darkMode, language, walletAddres
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-[32px] p-6 animate-scale-up shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className={cn("w-full max-w-sm rounded-3xl p-6 animate-scale-in shadow-2xl", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
                 {/* Header */}
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex justify-between items-center mb-6">
                     <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'} rounded-full flex items-center justify-center`}>
-                            <ArrowDownToLine size={20} />
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center ring-1", darkMode ? "bg-blue-500/10 text-blue-400 ring-blue-500/20" : "bg-blue-50 text-blue-600 ring-blue-100")}>
+                            <ArrowDown size={20} />
                         </div>
                         <div>
-                            <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            <h3 className={cn("text-base font-bold", darkMode ? "text-white" : "text-gray-900")}>
                                 {language === 'ar' ? 'استلام' : 'Receive'}
                             </h3>
-                            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            <p className={cn("text-[11px]", darkMode ? "text-gray-500" : "text-gray-400")}>
                                 TON & Jettons
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className={`p-2 rounded-full transition ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}
-                    >
-                        <X size={24} />
+                    <button onClick={onClose} className={cn("p-1.5 rounded-xl transition", darkMode ? "hover:bg-white/5 text-gray-500" : "hover:bg-gray-100 text-gray-400")}>
+                        <X size={18} />
                     </button>
                 </div>
 
@@ -651,11 +890,11 @@ export function ReceiveModal({ isOpen, onClose, darkMode, language, walletAddres
                 </div>
 
                 {/* Address Container */}
-                <div className={`mb-8 p-4 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} border ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
-                    <p className={`text-xs text-center mb-2 font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                <div className="glass-card p-4 mb-6">
+                    <p className={cn("text-[11px] text-center mb-2 font-medium", darkMode ? "text-gray-500" : "text-gray-400")}>
                         {language === 'ar' ? 'عنوان محفظتك' : 'Your Wallet Address'}
                     </p>
-                    <p className={`text-sm text-center font-mono break-all font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <p className={cn("text-sm text-center font-mono break-all font-medium", darkMode ? "text-gray-300" : "text-gray-700")}>
                         {walletAddress}
                     </p>
                 </div>
@@ -664,17 +903,17 @@ export function ReceiveModal({ isOpen, onClose, darkMode, language, walletAddres
                 <div className="grid grid-cols-2 gap-3">
                     <button
                         onClick={handleCopy}
-                        className={`col-span-1 flex items-center justify-center gap-2 py-4 rounded-xl font-bold transition text-white shadow-lg shadow-blue-500/20 active:scale-95 ${copied ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+                        className={cn("flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-sm transition-all active:scale-[0.98]", copied ? "bg-green-500 text-white shadow-lg shadow-green-500/20" : "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/20")}
                     >
-                        {copied ? <Check size={20} /> : <Copy size={20} />}
+                        {copied ? <Check size={16} /> : <Copy size={16} />}
                         <span>{copied ? (language === 'ar' ? 'تم النسخ' : 'Copied') : (language === 'ar' ? 'نسخ' : 'Copy')}</span>
                     </button>
 
                     <button
                         onClick={handleShare}
-                        className={`col-span-1 flex items-center justify-center gap-2 py-4 rounded-xl font-bold border transition active:scale-95 ${darkMode ? 'bg-gray-800 border-gray-700 text-white hover:bg-gray-700' : 'bg-white border-gray-200 text-gray-800 hover:bg-gray-50'}`}
+                        className={cn("flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-sm transition-all active:scale-[0.98] glass-btn", darkMode ? "text-gray-300" : "text-gray-600")}
                     >
-                        <Share2 size={20} />
+                        <Share2 size={16} />
                         <span>{language === 'ar' ? 'مشاركة' : 'Share'}</span>
                     </button>
                 </div>
@@ -697,8 +936,8 @@ export function BuyModal({ isOpen, onClose, darkMode, language, walletAddress }:
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-[24px] overflow-hidden animate-scale-up shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className={cn("w-full max-w-sm rounded-3xl overflow-hidden animate-scale-in shadow-2xl", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
 
                 {/* Header */}
                 <div className={`p-5 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
@@ -1052,16 +1291,16 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
     const hasInsufficientBalance = parseFloat(amount || '0') > balance;
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-2xl animate-scale-up shadow-xl`} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className={cn("w-full max-w-sm rounded-3xl animate-scale-in shadow-2xl", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
 
                 {/* Header */}
-                <div className={`p-4 border-b ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
+                <div className={cn("p-4 border-b", darkMode ? "border-white/[0.06]" : "border-gray-100")}>
                     <div className="flex justify-between items-center">
-                        <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        <h3 className={cn("text-base font-bold", darkMode ? "text-white" : "text-gray-900")}>
                             {language === 'ar' ? 'تبديل' : 'Swap'}
                         </h3>
-                        <button onClick={onClose} className={`p-1.5 rounded-full ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                        <button onClick={onClose} className={cn("p-1.5 rounded-xl transition", darkMode ? "hover:bg-white/5 text-gray-500" : "hover:bg-gray-100 text-gray-400")}>
                             <X size={18} />
                         </button>
                     </div>
@@ -1069,7 +1308,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
 
                 <div className="p-4">
                     {/* Send Section */}
-                    <div className={`p-3 rounded-xl mb-2 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                    <div className={cn("glass-card p-3 mb-2")}>
                         <div className="flex justify-between items-center mb-2">
                             <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                                 {language === 'ar' ? 'أرسل' : 'Send'}
@@ -1089,9 +1328,9 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                         <div className="flex items-center gap-3 overflow-hidden">
                             <button
                                 onClick={() => { setShowFromPicker(!showFromPicker); setShowToPicker(false); }}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-xl flex-shrink-0 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-100'} transition`}
+                                className={cn("flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full flex-shrink-0 transition-all", darkMode ? "bg-white/[0.06] hover:bg-white/[0.1] ring-1 ring-white/[0.08]" : "bg-gray-100 hover:bg-gray-200/80")}
                             >
-                                <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                <div className="w-7 h-7 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
                                     <img
                                         src={fromTokenData?.icon}
                                         alt={fromToken}
@@ -1099,8 +1338,8 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                         onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }}
                                     />
                                 </div>
-                                <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{fromToken}</span>
-                                <ArrowDownToLine size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                                <span className={cn("font-bold text-sm", darkMode ? 'text-white' : 'text-gray-900')}>{fromToken}</span>
+                                <ChevronRight size={14} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
                             </button>
                             <input
                                 type="number"
@@ -1119,15 +1358,15 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
 
                     {/* Token Picker - From */}
                     {showFromPicker && (
-                        <div className={`rounded-xl mb-2 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                        <div className="glass-card mb-2 overflow-hidden">
                             {/* Search Input */}
-                            <div className={`p-2 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <div className={cn("p-2 border-b", darkMode ? "border-white/[0.06]" : "border-black/[0.04]")}>
                                 <input
                                     type="text"
                                     value={tokenSearch}
                                     onChange={(e) => setTokenSearch(e.target.value)}
                                     placeholder={language === 'ar' ? 'بحث عن التوكن...' : 'Search tokens...'}
-                                    className={`w-full px-3 py-2 rounded-lg text-sm outline-none ${darkMode ? 'bg-gray-700 text-white placeholder-gray-400' : 'bg-white text-gray-900 placeholder-gray-400'} border ${darkMode ? 'border-gray-600 focus:border-blue-500' : 'border-gray-200 focus:border-blue-500'}`}
+                                    className={cn("w-full px-3 py-2 rounded-xl text-sm outline-none", darkMode ? "bg-white/5 text-white placeholder:text-gray-500 border border-white/10 focus:border-blue-500/50" : "bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200 focus:border-blue-400")}
                                     autoFocus
                                 />
                             </div>
@@ -1151,7 +1390,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                             <button
                                                 key={t.address || t.symbol}
                                                 onClick={() => { setFromToken(t.symbol); setShowFromPicker(false); setQuote(null); setTokenSearch(''); }}
-                                                className={`w-full flex items-center gap-3 p-3 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition`}
+                                                className={cn("w-full flex items-center gap-3 p-3 transition", darkMode ? "hover:bg-white/[0.03]" : "hover:bg-black/[0.02]")}
                                             >
                                                 <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
                                                     <img
@@ -1194,17 +1433,17 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                     )}
 
                     {/* Swap Direction */}
-                    <div className="flex justify-center -my-1 relative z-10">
+                    <div className="flex justify-center my-2 relative z-10">
                         <button
                             onClick={handleSwapTokens}
-                            className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-100'} border-4 ${darkMode ? 'border-gray-900' : 'border-white'} shadow transition`}
+                            className={cn("p-2.5 rounded-xl ring-1 shadow-sm transition-all active:scale-90 active:rotate-180", darkMode ? "bg-white/5 hover:bg-white/10 ring-white/10 text-gray-300" : "bg-white hover:bg-gray-50 ring-black/[0.06] text-gray-600 shadow-md")}
                         >
-                            <ArrowDownToLine size={16} className={darkMode ? 'text-gray-300' : 'text-gray-600'} />
+                            <ArrowDown size={18} strokeWidth={2.5} />
                         </button>
                     </div>
 
                     {/* Receive Section */}
-                    <div className={`p-3 rounded-xl mb-3 ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                    <div className={cn("glass-card p-3 mb-3")}>
                         <div className="flex justify-between items-center mb-2">
                             <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                                 {language === 'ar' ? 'استلم' : 'Receive'}
@@ -1216,9 +1455,9 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={() => { setShowToPicker(!showToPicker); setShowFromPicker(false); }}
-                                className={`flex items-center gap-2 px-3 py-2 rounded-xl ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-white hover:bg-gray-100'} transition`}
+                                className={cn("flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full flex-shrink-0 transition-all", darkMode ? "bg-white/[0.06] hover:bg-white/[0.1] ring-1 ring-white/[0.08]" : "bg-gray-100 hover:bg-gray-200/80")}
                             >
-                                <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                                <div className="w-7 h-7 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
                                     <img
                                         src={toTokenData?.icon}
                                         alt={toToken}
@@ -1226,8 +1465,8 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                         onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }}
                                     />
                                 </div>
-                                <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{toToken}</span>
-                                <ArrowDownToLine size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                                <span className={cn("font-bold text-sm", darkMode ? 'text-white' : 'text-gray-900')}>{toToken}</span>
+                                <ChevronRight size={14} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
                             </button>
                             <div className="flex-1 text-right">
                                 {isLoadingQuote ? (
@@ -1243,15 +1482,15 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
 
                     {/* Token Picker - To */}
                     {showToPicker && (
-                        <div className={`rounded-xl mb-3 overflow-hidden ${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                        <div className="glass-card mb-3 overflow-hidden">
                             {/* Search Input */}
-                            <div className={`p-2 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <div className={cn("p-2 border-b", darkMode ? "border-white/[0.06]" : "border-black/[0.04]")}>
                                 <input
                                     type="text"
                                     value={tokenSearch}
                                     onChange={(e) => setTokenSearch(e.target.value)}
                                     placeholder={language === 'ar' ? 'بحث عن التوكن...' : 'Search tokens...'}
-                                    className={`w-full px-3 py-2 rounded-lg text-sm outline-none ${darkMode ? 'bg-gray-700 text-white placeholder-gray-400' : 'bg-white text-gray-900 placeholder-gray-400'} border ${darkMode ? 'border-gray-600 focus:border-blue-500' : 'border-gray-200 focus:border-blue-500'}`}
+                                    className={cn("w-full px-3 py-2 rounded-xl text-sm outline-none", darkMode ? "bg-white/5 text-white placeholder:text-gray-500 border border-white/10 focus:border-blue-500/50" : "bg-white text-gray-900 placeholder:text-gray-400 border border-gray-200 focus:border-blue-400")}
                                     autoFocus
                                 />
                             </div>
@@ -1275,7 +1514,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                             <button
                                                 key={t.address || t.symbol}
                                                 onClick={() => { setToToken(t.symbol); setShowToPicker(false); setQuote(null); setTokenSearch(''); }}
-                                                className={`w-full flex items-center gap-3 p-3 ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'} transition`}
+                                                className={cn("w-full flex items-center gap-3 p-3 transition", darkMode ? "hover:bg-white/[0.03]" : "hover:bg-black/[0.02]")}
                                             >
                                                 <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
                                                     <img
@@ -1316,7 +1555,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
 
                     {/* Quote Info */}
                     {quote && !isLoadingQuote && (
-                        <div className={`p-3 rounded-xl mb-3 ${darkMode ? 'bg-gray-800/50' : 'bg-gray-50'}`}>
+                        <div className="glass-card p-3 mb-3">
                             {/* Rate with refresh indicator */}
                             <div className="flex justify-between items-center text-xs mb-1">
                                 <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>{language === 'ar' ? 'السعر' : 'Rate'}</span>
@@ -1327,7 +1566,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                         className={`p-1 rounded-full hover:bg-gray-700/50 transition ${isLoadingQuote ? 'animate-spin' : ''}`}
                                         title={`${language === 'ar' ? 'تحديث' : 'Refresh'} (${refreshCountdown}s)`}
                                     >
-                                        <RefreshCw size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
+                                        <ArrowLeftRight size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
                                     </button>
                                 </div>
                             </div>
@@ -1350,15 +1589,17 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                     )}
 
                     {/* DEX Selection */}
-                    <div className="flex gap-2 mb-3">
+                    <div className={cn("glass-card p-1 flex gap-1 mb-3")}>
                         {dexProviders.map((dex) => (
                             <button
                                 key={dex.id}
                                 onClick={() => { setSelectedDex(dex.id); setQuote(null); }}
-                                className={`flex-1 py-2 rounded-lg text-sm font-medium transition ${selectedDex === dex.id
-                                    ? 'bg-blue-500 text-white'
-                                    : `${darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-600'}`
-                                    }`}
+                                className={cn(
+                                    "flex-1 py-2 rounded-xl text-xs font-bold transition-all",
+                                    selectedDex === dex.id
+                                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm"
+                                        : darkMode ? "text-gray-500 hover:text-gray-300" : "text-gray-500 hover:text-gray-700"
+                                )}
                             >
                                 {dex.name}
                             </button>
@@ -1376,7 +1617,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                     <button
                         onClick={handleSwap}
                         disabled={!quote || !amount || parseFloat(amount) <= 0 || hasInsufficientBalance || isLoadingQuote}
-                        className="w-full py-3.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-[0.98]"
                     >
                         {isLoadingQuote ? (
                             <Loader2 size={18} className="animate-spin" />
@@ -1384,7 +1625,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                             language === 'ar' ? 'رصيد غير كافي' : 'Insufficient Balance'
                         ) : (
                             <>
-                                <Send size={16} />
+                                <ArrowLeftRight size={16} />
                                 {language === 'ar' ? 'تبديل' : 'Swap'}
                             </>
                         )}
@@ -1405,27 +1646,25 @@ interface BackupModalProps extends BaseModalProps {
 export function BackupModal({ isOpen, onClose, darkMode, language, onShowPhrase, onShowPrivateKey }: BackupModalProps) {
     if (!isOpen) return null;
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-3xl p-6 animate-scale-up`} onClick={(e) => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{language === 'ar' ? 'النسخ الاحتياطي' : 'Backup'}</h3>
-                    <button onClick={onClose} className={`p-2 rounded-full ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
-                        <X size={20} />
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className={cn("w-full max-w-sm rounded-3xl p-6 animate-scale-in", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-5">
+                    <h3 className={cn("text-base font-bold", darkMode ? "text-white" : "text-gray-900")}>{language === 'ar' ? 'النسخ الاحتياطي' : 'Backup'}</h3>
+                    <button onClick={onClose} className={cn("p-1.5 rounded-xl transition", darkMode ? "hover:bg-white/5 text-gray-500" : "hover:bg-gray-100 text-gray-400")}>
+                        <X size={18} />
                     </button>
                 </div>
-                <div className="space-y-4">
-                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-yellow-950/30 border border-yellow-900/50' : 'bg-yellow-50 border border-yellow-200'}`}>
-                        <p className={`text-sm ${darkMode ? 'text-yellow-500' : 'text-yellow-700'} leading-relaxed`}>
-                            {language === 'ar' ? 'قم بحفظ العبارة السرية في مكان آمن. لا تشاركها مع أي أحد أبداً.' : 'Save your secret phrase in a safe place. Never share it with anyone.'}
-                        </p>
+                <div className="space-y-3">
+                    <div className={cn("p-3.5 rounded-2xl text-xs leading-relaxed", darkMode ? "bg-amber-500/5 text-amber-400/80 ring-1 ring-amber-500/10" : "bg-amber-50 text-amber-700 ring-1 ring-amber-200/50")}>
+                        {language === 'ar' ? 'قم بحفظ العبارة السرية في مكان آمن. لا تشاركها مع أي أحد أبداً.' : 'Save your secret phrase in a safe place. Never share it with anyone.'}
                     </div>
-                    <button onClick={onShowPhrase} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition">
+                    <button onClick={onShowPhrase} className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 rounded-2xl font-semibold text-sm shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all">
                         {language === 'ar' ? 'عرض العبارة السرية' : 'Show Secret Phrase'}
                     </button>
-                    <button onClick={onShowPrivateKey} className={`w-full py-3 rounded-xl font-medium ${darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} transition`}>
+                    <button onClick={onShowPrivateKey} className={cn("w-full py-3 rounded-2xl font-semibold text-sm transition-all active:scale-[0.98]", darkMode ? "glass-btn text-gray-300" : "glass-btn text-gray-600")}>
                         {language === 'ar' ? 'عرض المفتاح الخاص' : 'Show Private Key'}
                     </button>
-                    <button className={`w-full py-3 rounded-xl font-medium ${darkMode ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} transition`}>
+                    <button className={cn("w-full py-3 rounded-2xl font-semibold text-sm transition-all active:scale-[0.98]", darkMode ? "glass-btn text-gray-300" : "glass-btn text-gray-600")}>
                         {language === 'ar' ? 'حفظ في Google Drive' : 'Save to Google Drive'}
                     </button>
                 </div>
@@ -1438,12 +1677,12 @@ export function BackupModal({ isOpen, onClose, darkMode, language, onShowPhrase,
 export function PhraseModal({ isOpen, onClose, darkMode, language, seedPhrase, handleCopyPhrase, copiedPhrase }: PhraseModalProps) {
     if (!isOpen) return null;
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50" onClick={onClose}>
-            <div className={`w-full max-w-md ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-t-3xl p-6 animate-slide-up max-h-[90vh] overflow-y-auto no-scrollbar`} onClick={(e) => e.stopPropagation()}>
-                <div className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-6"></div>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end justify-center z-50" onClick={onClose}>
+            <div className={cn("w-full max-w-md rounded-t-3xl p-6 animate-slide-up max-h-[90vh] overflow-y-auto no-scrollbar", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
+                <div className={cn("w-10 h-1 rounded-full mx-auto mb-5", darkMode ? "bg-white/10" : "bg-gray-200")}></div>
 
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{language === 'ar' ? 'العبارة السرية' : 'Secret Phrase'}</h3>
+                <div className="flex justify-between items-center mb-5">
+                    <h3 className={cn("text-base font-bold", darkMode ? "text-white" : "text-gray-900")}>{language === 'ar' ? 'العبارة السرية' : 'Secret Phrase'}</h3>
                     <button
                         onClick={handleCopyPhrase}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition ${darkMode ? 'bg-blue-950 text-blue-400 hover:bg-blue-900' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
@@ -1485,125 +1724,117 @@ export function PhraseModal({ isOpen, onClose, darkMode, language, seedPhrase, h
 }
 
 // Transaction Modal
-// Transaction Modal
 export function TransactionModal({ transaction, onClose, darkMode, language }: TransactionModalProps) {
     if (!transaction) return null;
 
-    // Helper to determine icon
-    const getIcon = () => {
-        if (transaction.status === 'failed') return <AlertCircle size={28} className={darkMode ? 'text-red-400' : 'text-red-500'} />;
-        if (transaction.type === 'received') return <ArrowDownToLine size={28} className={darkMode ? 'text-green-400' : 'text-green-600'} />;
-        if (transaction.type === 'swap') return <RefreshCw size={28} className={darkMode ? 'text-blue-400' : 'text-blue-600'} />;
-        return <Send size={28} className={darkMode ? 'text-gray-300' : 'text-gray-700'} />;
+    const getIconConfig = () => {
+        if (transaction.status === 'failed') return { icon: <XCircle size={22} />, bg: darkMode ? 'bg-red-500/10 text-red-400 ring-red-500/20' : 'bg-red-50 text-red-500 ring-red-100' };
+        if (transaction.type === 'received') return { icon: <ArrowDown size={22} />, bg: darkMode ? 'bg-green-500/10 text-green-400 ring-green-500/20' : 'bg-green-50 text-green-600 ring-green-100' };
+        if (transaction.type === 'swap') return { icon: <ArrowLeftRight size={22} />, bg: darkMode ? 'bg-blue-500/10 text-blue-400 ring-blue-500/20' : 'bg-blue-50 text-blue-600 ring-blue-100' };
+        return { icon: <ArrowUp size={22} />, bg: darkMode ? 'bg-white/5 text-gray-400 ring-white/10' : 'bg-gray-50 text-gray-500 ring-gray-100' };
     };
 
+    const { icon, bg } = getIconConfig();
+    const addr = transaction.type === 'received' ? transaction.from : transaction.to;
+
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end justify-center z-50" onClick={onClose}>
-            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-950' : 'bg-white'} rounded-t-[32px] p-6 animate-slide-up shadow-2xl`} onClick={(e) => e.stopPropagation()}>
-                <div className="w-10 h-1 bg-gray-300/50 rounded-full mx-auto mb-8"></div>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end justify-center z-50" onClick={onClose}>
+            <div className={cn("w-full max-w-sm rounded-t-3xl p-6 animate-slide-up shadow-2xl", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
+                <div className={cn("w-10 h-1 rounded-full mx-auto mb-6", darkMode ? "bg-white/10" : "bg-gray-200")} />
 
-                <div className="text-center mb-8">
-                    <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border ${darkMode ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-100'
-                        }`}>
-                        {getIcon()}
+                {/* Header */}
+                <div className="text-center mb-6">
+                    <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 ring-1", bg)}>
+                        {icon}
                     </div>
-
-                    <h2 className={`text-3xl font-bold mb-1 tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'} dir-ltr`}>
-                        {transaction.amount || '0.00'} <span className="text-xl font-medium text-gray-400">{transaction.token}</span>
+                    <h2 className={cn("text-3xl font-bold mb-0.5 tracking-tight", darkMode ? "text-white" : "text-black")}>
+                        {transaction.amount || '0.00'} <span className={cn("text-xl font-semibold", darkMode ? "text-gray-400" : "text-gray-600")}>{transaction.token}</span>
                     </h2>
-
-                    <p className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                    <p className={cn("text-sm font-medium", darkMode ? "text-gray-500" : "text-gray-600")}>
                         {transaction.time}
                     </p>
                 </div>
 
-                <div className="space-y-4 mb-8">
-                    <div className={`p-5 rounded-2xl ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} space-y-4`}>
-                        {/* Status Row */}
-                        <div className="flex justify-between items-center">
-                            <span className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                {language === 'ar' ? 'الحالة' : 'Status'}
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                                <div className={`w-2 h-2 rounded-full ${transaction.status === 'failed' ? 'bg-red-500' : 'bg-green-500'}`}></div>
-                                <span className={`text-sm font-semibold ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    {transaction.status === 'failed'
-                                        ? (language === 'ar' ? 'فشل' : 'Failed')
-                                        : (language === 'ar' ? 'مكتمل' : 'Completed')}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Fee Row */}
-                        <div className="flex justify-between items-center">
-                            <span className={`text-sm font-medium ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                {language === 'ar' ? 'الرسوم' : 'Fee'}
-                            </span>
-                            <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                {transaction.fee || '0'} TON
+                {/* Details Card */}
+                <div className={cn("glass-card divide-y overflow-hidden mb-6", darkMode ? "divide-white/[0.06]" : "divide-black/[0.04]")}>
+                    {/* Status */}
+                    <div className="flex justify-between items-center px-4 py-3">
+                        <span className={cn("text-xs", darkMode ? "text-gray-500" : "text-gray-400")}>
+                            {language === 'ar' ? 'الحالة' : 'Status'}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                            <div className={cn("w-1.5 h-1.5 rounded-full", transaction.status === 'failed' ? "bg-red-500" : "bg-green-500")} />
+                            <span className={cn("text-sm font-semibold", transaction.status === 'failed' ? "text-red-500" : "text-green-500")}>
+                                {transaction.status === 'failed'
+                                    ? (language === 'ar' ? 'فشل' : 'Failed')
+                                    : (language === 'ar' ? 'مكتمل' : 'Completed')}
                             </span>
                         </div>
+                    </div>
 
-                        {/* Divider */}
-                        <div className={`h-px w-full ${darkMode ? 'bg-gray-800' : 'bg-gray-200'}`}></div>
+                    {/* Fee */}
+                    <div className="flex justify-between items-center px-4 py-3">
+                        <span className={cn("text-xs", darkMode ? "text-gray-500" : "text-gray-400")}>
+                            {language === 'ar' ? 'الرسوم' : 'Fee'}
+                        </span>
+                        <span className={cn("text-sm font-semibold tabular-nums", darkMode ? "text-gray-300" : "text-gray-700")}>
+                            {transaction.fee || '0'} TON
+                        </span>
+                    </div>
 
-                        {/* Address Row */}
-                        <div>
-                            <div className="flex justify-between items-center mb-1">
-                                <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                    {transaction.type === 'received'
-                                        ? (language === 'ar' ? 'من' : 'From')
-                                        : transaction.type === 'swap'
-                                            ? (language === 'ar' ? 'المبادل' : 'Router')
-                                            : (language === 'ar' ? 'إلى' : 'To')}
-                                </span>
-                            </div>
-                            <div className="flex items-center justify-between gap-3">
-                                <p className={`text-sm font-mono break-all ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    {transaction.type === 'received' ? transaction.from : transaction.to}
-                                </p>
-                                <button
-                                    onClick={() => navigator.clipboard.writeText(transaction.type === 'received' ? transaction.from : transaction.to)}
-                                    className={`p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition text-gray-400 hover:text-gray-600`}
-                                >
-                                    <Copy size={16} />
-                                </button>
-                            </div>
+                    {/* Address */}
+                    <div className="px-4 py-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className={cn("text-[10px] font-bold uppercase tracking-wider", darkMode ? "text-gray-500" : "text-gray-400")}>
+                                {transaction.type === 'received'
+                                    ? (language === 'ar' ? 'من' : 'From')
+                                    : transaction.type === 'swap'
+                                        ? (language === 'ar' ? 'المبادل' : 'Router')
+                                        : (language === 'ar' ? 'إلى' : 'To')}
+                            </span>
+                            <button
+                                onClick={() => navigator.clipboard.writeText(addr)}
+                                className={cn("p-1.5 rounded-lg transition-colors", darkMode ? "text-gray-600 hover:text-gray-400 hover:bg-white/5" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100")}
+                            >
+                                <Copy size={13} />
+                            </button>
                         </div>
+                        <p className={cn("text-[13px] font-mono break-all leading-relaxed", darkMode ? "text-gray-300" : "text-gray-600")}>
+                            {addr}
+                        </p>
+                    </div>
 
-                        {/* Hash Row */}
-                        <div className="pt-2">
-                            <div className="flex justify-between items-center mb-1">
-                                <span className={`text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                    {language === 'ar' ? 'المعرف' : 'Hash'}
-                                </span>
-                            </div>
-                            <div className="flex items-center justify-between gap-3">
-                                <p className={`text-xs font-mono break-all text-gray-500`}>
-                                    {transaction.hash}
-                                </p>
-                                <button
-                                    onClick={() => navigator.clipboard.writeText(transaction.hash)}
-                                    className={`p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition text-gray-400 hover:text-gray-600`}
-                                >
-                                    <Copy size={14} />
-                                </button>
-                            </div>
+                    {/* Hash */}
+                    <div className="px-4 py-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className={cn("text-[10px] font-bold uppercase tracking-wider", darkMode ? "text-gray-500" : "text-gray-400")}>
+                                {language === 'ar' ? 'المعرف' : 'Hash'}
+                            </span>
+                            <button
+                                onClick={() => navigator.clipboard.writeText(transaction.hash)}
+                                className={cn("p-1.5 rounded-lg transition-colors", darkMode ? "text-gray-600 hover:text-gray-400 hover:bg-white/5" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100")}
+                            >
+                                <Copy size={13} />
+                            </button>
                         </div>
+                        <p className={cn("text-[11px] font-mono break-all leading-relaxed", darkMode ? "text-gray-500" : "text-gray-500")}>
+                            {transaction.hash}
+                        </p>
                     </div>
                 </div>
 
-                <div className="flex gap-3">
+                {/* Actions */}
+                <div className="flex gap-2.5">
                     <button
                         onClick={() => window.open(`https://tonviewer.com/transaction/${transaction.hash}`, '_blank')}
-                        className={`flex-1 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition ${darkMode ? 'bg-gray-800 text-white hover:bg-gray-800/80' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
-                            }`}>
-                        <ExternalLink size={18} />
+                        className={cn("flex-1 py-3.5 rounded-2xl font-semibold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]", darkMode ? "bg-white/[0.06] text-white ring-1 ring-white/[0.08] hover:bg-white/[0.08]" : "bg-gray-100 text-gray-900 ring-1 ring-black/[0.04] hover:bg-gray-200/80")}
+                    >
+                        <ExternalLink size={15} />
                         <span>{language === 'ar' ? 'المستكشف' : 'Explorer'}</span>
                     </button>
                     <button
                         onClick={onClose}
-                        className="flex-1 bg-black text-white dark:bg-white dark:text-black py-4 rounded-xl font-bold hover:opacity-90 transition"
+                        className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3.5 rounded-2xl font-semibold text-sm transition-all shadow-lg shadow-blue-500/20 active:scale-[0.98]"
                     >
                         {language === 'ar' ? 'إغلاق' : 'Close'}
                     </button>
@@ -1631,11 +1862,11 @@ export function PrivateKeyModal({ isOpen, onClose, darkMode, language, privateKe
         setTimeout(() => setCopied(false), 2000);
     };
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className={`w-full max-w-sm ${darkMode ? 'bg-gray-900' : 'bg-white'} rounded-3xl p-6 animate-scale-up`} onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className={`w-full max-w-sm ${darkMode ? 'bg-[hsl(224,20%,8%)] ring-1 ring-white/5' : 'bg-white/95 backdrop-blur-xl ring-1 ring-black/5'} rounded-3xl p-6 animate-scale-in`} onClick={(e) => e.stopPropagation()}>
                 <div className="flex justify-between items-center mb-6">
-                    <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-800'}`}>{language === 'ar' ? 'المفتاح الخاص' : 'Private Key'}</h3>
-                    <button onClick={onClose} className={`p-2 rounded-full ${darkMode ? 'hover:bg-gray-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+                    <h3 className={`text-base font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{language === 'ar' ? 'المفتاح الخاص' : 'Private Key'}</h3>
+                    <button onClick={onClose} className={`p-2 rounded-full ${darkMode ? 'hover:bg-white/5 text-gray-500' : 'hover:bg-gray-100 text-gray-400'}`}>
                         <X size={20} />
                     </button>
                 </div>
