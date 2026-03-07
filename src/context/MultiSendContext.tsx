@@ -147,7 +147,7 @@ const INITIAL_STATE: MultiSendState = {
     walletType: 'highload-v3',
     mode: 'batch',
     highloadMode: 'batches',
-    rows: [createEmptyRow(), createEmptyRow(), createEmptyRow()],
+    rows: [createEmptyRow()],
     unification: {
         comment: { base: '', sorting: 'none' },
         amount: { value: '' },
@@ -155,7 +155,7 @@ const INITIAL_STATE: MultiSendState = {
     },
     validation: {
         validCount: 0,
-        totalCount: 3,
+        totalCount: 1,
         balanceSufficient: true,
         errors: [],
     },

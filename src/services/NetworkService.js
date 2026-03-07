@@ -139,6 +139,15 @@ export class NetworkService {
             return;
         }
 
+        // Prevent aggressive spamming and overlapping requests
+        const nowMs = Date.now();
+        if (this.lastPingTime && (nowMs - this.lastPingTime < 20000)) {
+            return; // Throttle: require at least 20 seconds between actual network checks
+        }
+
+        if (this._isChecking) return;
+        this._isChecking = true;
+
         try {
             const startTime = performance.now();
 
@@ -149,6 +158,8 @@ export class NetworkService {
             ];
 
             let success = false;
+            let got429 = false;
+
             for (const endpoint of endpoints) {
                 try {
                     const controller = new AbortController();
@@ -164,7 +175,10 @@ export class NetworkService {
 
                     if (response.ok) {
                         success = true;
-                        break;
+                        break; // exit loop if successful
+                    }
+                    if (response.status === 429) {
+                        got429 = true;
                     }
                 } catch (e) {
                     continue; // Try next endpoint
@@ -175,7 +189,14 @@ export class NetworkService {
             this.latency = Math.round(endTime - startTime);
             this.lastPingTime = Date.now();
 
-            if (!success) {
+            if (got429) {
+                console.warn('[NetworkService] Received 429. Forcing quality down to prevent repeated locks and stopping interval.');
+                // Simulate "weak" or "offline" to pause intense activity, rely on standard delay
+                this.connectionQuality = ConnectionQuality.WEAK;
+                // Add an artificial cooldown bump so it waits longer next time
+                this.lastPingTime += 60000; // Force an extra 60s wait
+                this.stopMonitoring(); // explicitly clear the tracking spam interval
+            } else if (!success) {
                 // API unreachable but navigator says online
                 // This could be a firewall or DNS issue
                 this.connectionQuality = ConnectionQuality.WEAK;
@@ -196,6 +217,8 @@ export class NetworkService {
             } else {
                 this.connectionQuality = ConnectionQuality.WEAK;
             }
+        } finally {
+            this._isChecking = false;
         }
 
         this._notifyListeners();

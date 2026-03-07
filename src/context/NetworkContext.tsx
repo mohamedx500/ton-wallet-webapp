@@ -41,6 +41,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
     const [status, setStatus] = useState<NetworkStatus>(defaultStatus);
     const [showBanner, setShowBanner] = useState(false);
     const [dismissedAt, setDismissedAt] = useState<number | null>(null);
+    const dismissedAtRef = React.useRef<number | null>(null);
 
     // Update state when network status changes
     useEffect(() => {
@@ -60,7 +61,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
                 !newStatus.isOnline;
 
             // Don't show if user dismissed recently (within 1 minute)
-            if (isProblematic && (!dismissedAt || Date.now() - dismissedAt > 60000)) {
+            if (isProblematic && (!dismissedAtRef.current || Date.now() - dismissedAtRef.current > 60000)) {
                 setShowBanner(true);
             } else if (!isProblematic) {
                 setShowBanner(false);
@@ -71,7 +72,7 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
             unsubscribe();
             networkService.stopMonitoring();
         };
-    }, [dismissedAt]);
+    }, []); // Empty dependency array ensures this NEVER loops!
 
     const checkConnection = useCallback(async () => {
         const newStatus = await networkService.checkNow();
@@ -85,7 +86,9 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
 
     const dismissBanner = useCallback(() => {
         setShowBanner(false);
-        setDismissedAt(Date.now());
+        const now = Date.now();
+        setDismissedAt(now);
+        dismissedAtRef.current = now;
     }, []);
 
     const value: NetworkContextType = {

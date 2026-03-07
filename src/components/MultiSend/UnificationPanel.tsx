@@ -14,27 +14,27 @@ import UnifyAmountSection from './UnifyAmountSection';
 import UnifyCurrencySection from './UnifyCurrencySection';
 
 const UnificationPanel: React.FC = () => {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     return (
-        <div className="rounded-2xl border border-gray-200 dark:border-white/[0.06] bg-gray-50 dark:bg-white/[0.02]">
+        <div className="rounded-[24px] border border-gray-200 dark:border-white/[0.03] bg-gray-50 dark:bg-[#14161C]">
             {/* Header / Toggle */}
             <button
                 type="button"
                 onClick={() => setIsExpanded((prev) => !prev)}
                 className={cn(
-                    'w-full flex items-center gap-3 px-4 sm:px-6 py-3 sm:py-4 transition-colors duration-200',
+                    'w-full flex items-center gap-3 px-4 sm:px-6 py-4 sm:py-5 transition-colors duration-200',
                     'hover:bg-gray-100 dark:hover:bg-white/[0.02]',
-                    isExpanded ? 'rounded-t-2xl' : 'rounded-2xl'
+                    isExpanded ? 'rounded-t-[24px]' : 'rounded-[24px]'
                 )}
             >
-                <Settings className="w-4 h-4 text-blue-400" />
-                <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                <Settings className="w-5 h-5 text-blue-500" />
+                <span className="text-[13px] font-bold text-gray-800 dark:text-gray-200 uppercase tracking-wider">
                     Unification
                 </span>
                 <ChevronDown
                     className={cn(
-                        'w-4 h-4 text-gray-500 ml-auto transition-transform duration-200',
+                        'w-5 h-5 text-gray-500 ml-auto transition-transform duration-300',
                         isExpanded && 'rotate-180'
                     )}
                 />
@@ -42,20 +42,20 @@ const UnificationPanel: React.FC = () => {
 
             {/* Expandable content */}
             {isExpanded && (
-                <div className="px-4 sm:px-6 pb-4 sm:pb-6 pt-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
+                <div className="px-4 pb-5 pt-2">
+                    <div className="flex flex-col gap-6">
                         {/* Comment Section */}
-                        <div className="rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4 sm:p-5">
+                        <div className="rounded-[18px] border border-transparent dark:border-white/[0.03] bg-white dark:bg-black/20 p-4 sm:p-5 w-full shadow-[inset_0_1px_4px_rgba(0,0,0,0.1)]">
                             <UnifyCommentSection />
                         </div>
 
                         {/* Amount Section */}
-                        <div className="rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4 sm:p-5">
+                        <div className="rounded-[18px] border border-transparent dark:border-white/[0.03] bg-white dark:bg-black/20 p-4 sm:p-5 w-full shadow-[inset_0_1px_4px_rgba(0,0,0,0.1)]">
                             <UnifyAmountSection />
                         </div>
 
                         {/* Currency Section */}
-                        <div className="rounded-xl border border-gray-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4 sm:p-5">
+                        <div className="rounded-[18px] border border-transparent dark:border-white/[0.03] bg-white dark:bg-black/20 p-4 sm:p-5 w-full shadow-[inset_0_1px_4px_rgba(0,0,0,0.1)]">
                             <UnifyCurrencySection />
                         </div>
                     </div>

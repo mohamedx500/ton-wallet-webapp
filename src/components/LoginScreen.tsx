@@ -138,14 +138,20 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
                 )}
                 {!activeAccount && <div className="mb-6" />}
                 <form onSubmit={handleUnlock} className="space-y-4">
-                    <div className="relative">
-                        <Lock size={16} className={cn("absolute left-4 top-1/2 -translate-y-1/2", darkMode ? "text-gray-500" : "text-gray-400")} />
+                    <div className="relative w-full">
+                        <Lock size={16} className={cn("absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none", darkMode ? "text-gray-500" : "text-gray-400")} />
                         <input
                             type={showPassword ? 'text' : 'password'}
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Enter Password"
+                            name="wallet-unlock-input-unique"
+                            id="wallet-unlock-input-unique"
                             autoComplete="new-password"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-form-type="other"
+                            spellCheck="false"
+                            placeholder="Enter Password"
                             className={cn(
                                 "w-full pl-11 pr-12 py-3.5 rounded-2xl text-sm font-medium outline-none transition-all",
                                 darkMode ? "bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-blue-500/50 focus:bg-white/[0.07]" : "bg-white/70 border border-gray-200/80 text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:bg-white"
@@ -227,32 +233,44 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
                 </div>
                 <form onSubmit={handlePasswordSetup} className="space-y-3">
                     <div className="relative">
-                        <input
-                            type={showPassword ? 'text' : 'password'}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder="New Password"
-                            autoComplete="new-password"
-                            className={cn(
-                                "w-full px-4 pr-12 py-3.5 rounded-2xl text-sm font-medium outline-none transition-all",
-                                darkMode ? "bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-blue-500/50" : "bg-white/70 border border-gray-200/80 text-gray-900 placeholder:text-gray-400 focus:border-blue-400"
-                            )}
-                        />
+                        <div>
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                autoComplete="new-password"
+                                data-lpignore="true"
+                                data-1p-ignore="true"
+                                data-form-type="other"
+                                spellCheck="false"
+                                placeholder="New Password"
+                                className={cn(
+                                    "w-full px-4 pr-12 py-3.5 rounded-2xl text-sm font-medium outline-none transition-all",
+                                    darkMode ? "bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-blue-500/50" : "bg-white/70 border border-gray-200/80 text-gray-900 placeholder:text-gray-400 focus:border-blue-400"
+                                )}
+                            />
+                        </div>
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className={cn("absolute right-4 top-1/2 -translate-y-1/2", darkMode ? "text-gray-500 hover:text-gray-300" : "text-gray-400 hover:text-gray-600")}>
                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                     </div>
-                    <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirm Password"
-                        autoComplete="new-password"
-                        className={cn(
-                            "w-full px-4 py-3.5 rounded-2xl text-sm font-medium outline-none transition-all",
-                            darkMode ? "bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-blue-500/50" : "bg-white/70 border border-gray-200/80 text-gray-900 placeholder:text-gray-400 focus:border-blue-400"
-                        )}
-                    />
+                    <div>
+                        <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            autoComplete="new-password"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            data-form-type="other"
+                            spellCheck="false"
+                            placeholder="Confirm Password"
+                            className={cn(
+                                "w-full px-4 py-3.5 rounded-2xl text-sm font-medium outline-none transition-all",
+                                darkMode ? "bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-blue-500/50" : "bg-white/70 border border-gray-200/80 text-gray-900 placeholder:text-gray-400 focus:border-blue-400"
+                            )}
+                        />
+                    </div>
                     {error && <p className="text-red-500 text-sm text-center font-medium">{error}</p>}
                     <button disabled={isLoading} className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3.5 rounded-2xl font-semibold text-sm hover:from-blue-600 hover:to-blue-700 transition-all flex justify-center shadow-lg shadow-blue-500/20 active:scale-[0.98]">
                         {isLoading ? <Loader2 size={20} className="animate-spin" /> : (isImportFlow ? 'Import Wallet' : 'Create Wallet')}

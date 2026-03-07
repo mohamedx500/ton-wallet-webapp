@@ -434,14 +434,61 @@ export async function executeHighloadV3(
                     messages.push(await buildTransferMessage(row, senderAddress, network, jettonCache));
                 }
 
+                // 1. [The secret here] We'll record the hash of the last transaction "before" sending.
+                let lastTxHash = '';
+                try {
+                    const lastTxs = await client.getTransactions(Address.parse(senderAddress), { limit: 1 });
+                    if (lastTxs.length > 0) lastTxHash = lastTxs[0].hash().toString('hex');
+                } catch (e) { /* Ignore */ }
+
                 const result = await highloadService.sendBatch(client, keyPair, messages);
 
                 if (result.success) {
-                    // Fetch the real hash from the blockchain
                     let realTxHash = `hl_batch_${chunk.index}_q${result.queryId?.toString()}`;
-                    await new Promise(r => setTimeout(r, 2500));
-                    const txs = await client.getTransactions(Address.parse(senderAddress), { limit: 1 });
-                    if (txs.length > 0) realTxHash = txs[0].hash().toString('hex');
+
+                    // 2. Smart Polling: We'll ask the server until the hash changes.
+                    for (let i = 0; i < 10; i++) {
+                        await new Promise(r => setTimeout(r, 1500));
+                        try {
+                            const txs = await client.getTransactions(Address.parse(senderAddress), { limit: 1 });
+                            if (txs.length > 0) {
+                                const tx = txs[0];
+                                const currentHash = tx.hash().toString('hex');
+
+                                // If the hash changes, this is our transaction
+                                if (currentHash !== lastTxHash && currentHash !== '') {
+                                    realTxHash = currentHash;
+
+                                    // [New Shield] Checks if the transaction actually succeeded on the blockchain
+                                    let isTxSuccessful = true;
+                                    if (tx.description.type === 'generic') {
+                                        // Checks the compute phase
+                                        if (tx.description.computePhase.type === 'vm' && !tx.description.computePhase.success) {
+                                            isTxSuccessful = false;
+                                        }
+
+                                        // Checks the distribution phase (which fails due to balance issues)
+                                        if (tx.description.actionPhase && !tx.description.actionPhase.success) {
+                                            isTxSuccessful = false;
+                                        }
+                                    }
+
+                                    // If it fails internally, we throw an error so the interface reddens and understands.
+                                    if (!isTxSuccessful) {
+                                        throw new Error("Transaction failed on the blockchain (Action Phase error: Check your TON balance).");
+                                    }
+
+                                    break;
+                                }
+                            }
+                        } catch (e: any) {
+                            // If the error is our own, we stop the loop and bring it to the interface.
+                            if (e.message.includes('failed on the blockchain')) {
+                                throw e;
+                            }
+                            // Otherwise (if it's a network error), continue trying normally.
+                        }
+                    }
 
                     onBatchUpdate?.(chunk.index, 'success', realTxHash);
                     for (const row of chunk.rows) onRowUpdate?.(row.id, 'success', undefined, result.queryId);
@@ -480,25 +527,15 @@ export async function executeHighloadV3(
         // Tell the interface that the batch has started sending
         onBatchUpdate?.(0, 'sending');
 
-        // Implementing true parallel transmission
+        // Execute the send in true parallel mode
         const results = await Promise.all(individualPromises);
 
-        // 3. Fetching the hash and terminating the Pending state in the interface
+        // 3. Report success to the interface (without passing a bulk hash)
         const allSuccess = results.every(r => r.success);
-        let burstHash = `burst_${Date.now()}`;
 
-        if (allSuccess) {
-            try {
-                await new Promise(r => setTimeout(r, 2500));
-                const txs = await client.getTransactions(Address.parse(senderAddress), { limit: 1 });
-                if (txs.length > 0) burstHash = txs[0].hash().toString('hex');
-            } catch (e) {
-                console.warn('Hash fetch failed', e);
-            }
-        }
-
-        // The magic line that removes the Pending and makes the batch return (Done)
-        onBatchUpdate?.(0, allSuccess ? 'success' : 'failed', burstHash);
+        // Note here: We removed the burstHash variable and all code that fetched the hash
+        // And we passed `undefined` in place of the hash so the interface doesn't create a button for the entire batch
+        onBatchUpdate?.(0, allSuccess ? 'success' : 'failed');
 
         return results.map((r, i) => ({ chunkIndex: i, success: r.success }));
     }

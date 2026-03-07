@@ -120,17 +120,17 @@ const AddressInput: React.FC<AddressInputProps> = ({
             : addressStatus === 'valid'
                 ? 'border-emerald-500/25 focus-within:border-emerald-500/50'
                 : isFocused
-                    ? 'border-blue-500/40'
-                    : 'border-gray-200 hover:border-gray-300 dark:border-white/[0.08] dark:hover:border-white/[0.12]';
+                    ? 'border-blue-500/40' // Focus ring
+                    : 'border-transparent dark:border-white/[0.03]';
 
     return (
         <div className="relative">
             <div
                 className={cn(
-                    'flex items-center gap-2 h-[42px] rounded-xl border px-4 transition-all duration-200',
-                    'bg-gray-50 dark:bg-white/[0.03]',
+                    'flex items-center gap-2 h-[46px] rounded-[14px] border px-4 transition-all duration-300',
+                    'bg-gray-100 dark:bg-black/40',
                     borderClass,
-                    isFocused && 'bg-white dark:bg-white/[0.05]',
+                    isFocused && 'bg-white dark:bg-black/60 shadow-sm',
                     disabled && 'opacity-50 cursor-not-allowed'
                 )}
                 onMouseEnter={() => setShowTooltip(true)}

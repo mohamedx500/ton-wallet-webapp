@@ -156,9 +156,10 @@ const CSVImportButton: React.FC = () => {
                 type="button"
                 onClick={handleClick}
                 className={cn(
-                    'flex items-center gap-2 px-3 py-2 rounded-xl transition-all duration-200',
-                    'text-sm text-gray-400 border border-gray-700/50 bg-gray-900/40',
-                    'hover:text-gray-200 hover:border-gray-600 hover:bg-gray-800/60'
+                    'flex items-center gap-2 px-3.5 py-2 rounded-full transition-all duration-300',
+                    'text-sm font-semibold border-none',
+                    'bg-gray-100 dark:bg-white/[0.04] text-gray-600 dark:text-gray-400',
+                    'hover:bg-gray-200 dark:hover:bg-white/[0.08] hover:text-gray-900 dark:hover:text-gray-200'
                 )}
             >
                 <Upload className="w-4 h-4" />

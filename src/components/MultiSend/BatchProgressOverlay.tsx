@@ -70,7 +70,7 @@ function getStatusLabel(status: string, index: number, total: number): string {
 }
 
 const BatchProgressOverlay: React.FC<BatchProgressOverlayProps> = ({ onClose }) => {
-    const { state } = useMultiSend();
+    const { state, resetExecution } = useMultiSend();
     const { execution, walletType, rows } = state;
     const { phase, batchProgress, globalError, txHashes } = execution;
 
@@ -78,6 +78,11 @@ const BatchProgressOverlay: React.FC<BatchProgressOverlayProps> = ({ onClose }) 
     const isComplete = phase === 'complete';
     const isError = phase === 'error';
     const canClose = isComplete || isError || phase === 'idle';
+
+    const handleDone = () => {
+        resetExecution();
+        onClose();
+    };
 
     // Count row statuses
     const rowCounts = useMemo(() => {
@@ -320,7 +325,7 @@ const BatchProgressOverlay: React.FC<BatchProgressOverlayProps> = ({ onClose }) 
                     <div className="px-5 py-4 border-t border-gray-800/60">
                         <button
                             type="button"
-                            onClick={onClose}
+                            onClick={handleDone}
                             className={cn(
                                 'w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200',
                                 isComplete
@@ -328,7 +333,7 @@ const BatchProgressOverlay: React.FC<BatchProgressOverlayProps> = ({ onClose }) 
                                     : 'bg-gray-800 text-gray-300 border border-gray-700/50 hover:bg-gray-700'
                             )}
                         >
-                            {isComplete ? 'Done' : 'Close'}
+                            {isComplete ? 'Done / New Batch' : 'Close'}
                         </button>
                     </div>
                 )}

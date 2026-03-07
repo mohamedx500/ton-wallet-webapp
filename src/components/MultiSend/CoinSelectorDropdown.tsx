@@ -177,19 +177,20 @@ const CoinSelectorDropdown: React.FC<CoinSelectorDropdownProps> = ({
         [onChange]
     );
     return (
-        <div ref={dropdownRef} className={cn("relative", !compact && "w-full")}>
+        <div ref={dropdownRef} className="relative w-full">
             {/* Trigger Button */}
             <button
                 type="button"
                 onClick={() => !disabled && setIsOpen((prev) => !prev)}
                 disabled={disabled}
                 className={cn(
-                    'flex items-center gap-2 h-[42px] rounded-xl border px-3 transition-all duration-200',
-                    'border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100',
-                    'dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:border-white/[0.12] dark:hover:bg-white/[0.05]',
+                    'flex items-center gap-2 h-[46px] rounded-[14px] border px-4 transition-all duration-300 w-full',
+                    'bg-gray-100 dark:bg-black/40 border-transparent dark:border-white/[0.03]',
+                    'hover:bg-gray-200 dark:hover:bg-black/60',
                     'disabled:opacity-50 disabled:cursor-not-allowed',
-                    isOpen && 'border-blue-500/40 dark:bg-white/[0.05] bg-gray-100', // Gray instead of blue-50
-                    compact ? 'min-w-[90px]' : 'w-full min-w-[110px]'
+                    isOpen && 'border-blue-500/40 dark:bg-black/80 bg-white shadow-sm',
+                    compact ? 'min-w-[70px]' : 'min-w-[110px]',
+                    'min-w-0'
                 )}
             >
                 <CoinBadge coin={value} size="sm" />

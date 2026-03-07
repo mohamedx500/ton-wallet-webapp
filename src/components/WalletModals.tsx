@@ -428,8 +428,8 @@ export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMo
                                     </div>
                                     <span className={cn("font-bold text-sm tabular-nums",
                                         tx.status === 'failed' ? 'text-red-500' :
-                                        tx.type === 'received' ? 'text-green-500' :
-                                        darkMode ? 'text-white' : 'text-gray-900'
+                                            tx.type === 'received' ? 'text-green-500' :
+                                                darkMode ? 'text-white' : 'text-gray-900'
                                     )}>
                                         {tx.type === 'received' ? '+' : tx.type === 'swap' ? '' : '-'}{tx.amount || '0.00'} {token.symbol}
                                     </span>
@@ -525,14 +525,21 @@ export function PasswordPromptModal({ isOpen, onClose, onConfirm, darkMode, lang
                     </p>
                     <div className="relative">
                         <Lock size={16} className={cn("absolute left-4 top-1/2 -translate-y-1/2", darkMode ? "text-gray-500" : "text-gray-400")} />
-                        <input
-                            type={showPassword ? 'text' : 'password'}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            placeholder={language === 'ar' ? 'كلمة المرور' : 'Password'}
-                            className={cn("w-full pl-11 pr-12 py-3.5 rounded-2xl text-sm font-medium outline-none transition-all", darkMode ? "bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-blue-500/50" : "bg-white/70 border border-gray-200/80 text-gray-900 placeholder:text-gray-400 focus:border-blue-400")}
-                            autoFocus
-                        />
+                        <div>
+                            <input
+                                type={showPassword ? 'text' : 'password'}
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                autoComplete="new-password"
+                                data-lpignore="true"
+                                data-1p-ignore="true"
+                                data-form-type="other"
+                                spellCheck="false"
+                                placeholder={language === 'ar' ? 'كلمة المرور' : 'Password'}
+                                className={cn("w-full pl-11 pr-12 py-3.5 rounded-2xl text-sm font-medium outline-none transition-all", darkMode ? "bg-white/5 border border-white/10 text-white placeholder:text-gray-500 focus:border-blue-500/50" : "bg-white/70 border border-gray-200/80 text-gray-900 placeholder:text-gray-400 focus:border-blue-400")}
+                                autoFocus
+                            />
+                        </div>
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className={cn("absolute right-4 top-1/2 -translate-y-1/2", darkMode ? "text-gray-500 hover:text-gray-300" : "text-gray-400 hover:text-gray-600")}>
                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>

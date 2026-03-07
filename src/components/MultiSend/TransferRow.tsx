@@ -92,96 +92,31 @@ const TransferRow: React.FC<TransferRowProps> = ({
     return (
         <div
             style={style}
+            // Vertical card layout with padding and spacing
             className={cn(
-                'group rounded-xl border border-transparent p-2 sm:p-3 transition-all duration-200',
-                'hover:bg-gray-50 hover:border-gray-200',
-                'dark:hover:bg-white/[0.02] dark:hover:border-white/[0.04]',
-                'border-l-2',
-                statusBorderClass,
-                row.rowStatus === 'failed' && 'bg-red-50 dark:bg-red-500/[0.04]',
-                row.rowStatus === 'success' && 'bg-emerald-50 dark:bg-emerald-500/[0.04]'
+                'group flex flex-col gap-3.5 bg-white dark:bg-[#14161C] border border-gray-100 dark:border-white/[0.03] p-4 sm:p-5 rounded-[24px] mb-5 transition-all duration-300 shadow-sm',
+                row.rowStatus === 'failed' && 'border-red-500/50 bg-red-500/5',
+                row.rowStatus === 'success' && 'border-emerald-500/50 bg-emerald-500/5'
             )}
         >
-            {/* Desktop: 12-column grid */}
-            <div className="hidden sm:grid grid-cols-12 gap-3 items-start">
-                {/* Address - col-span-4 */}
-                <div className="col-span-4">
-                    <AddressInput
-                        value={row.address}
-                        onChange={handleAddressChange}
-                        addressStatus={row.addressStatus}
-                        resolvedAddress={row.resolvedAddress}
-                        error={row.addressStatus === 'invalid' ? (row.error || 'Invalid address') : undefined}
-                        onResolve={handleResolve}
-                        placeholder="EQ... or UQ..."
-                        disabled={disabled}
-                    />
+            {/* Header Row: Number Badge & Delete Button */}
+            <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2.5 shadow-sm shadow-blue-500/10 justify-center min-w-[30px] h-[30px] bg-blue-500/10 text-blue-500 font-bold text-[13px] rounded-[10px]">
+                    {index + 1}
                 </div>
-
-                {/* Amount - col-span-2 */}
-                <div className="col-span-2">
-                    <AmountInput
-                        value={row.amount}
-                        onChange={handleAmountChange}
-                        coin={row.coin}
-                        placeholder="10"
-                        disabled={disabled}
-                    />
-                </div>
-
-                {/* Comment - col-span-3 */}
-                <div className="col-span-3">
-                    <input
-                        type="text"
-                        value={row.comment}
-                        onChange={handleCommentChange}
-                        placeholder="memo (optional)"
-                        disabled={disabled}
-                        autoComplete="off"
-                        className={cn(
-                            'w-full h-[42px] rounded-xl border px-4',
-                            'border-gray-200 bg-gray-50 text-gray-800 placeholder:text-gray-400',
-                            'dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:placeholder:text-gray-600',
-                            'text-sm outline-none transition-all duration-200',
-                            'hover:border-gray-300 focus:border-blue-500/50 focus:bg-white',
-                            'dark:hover:border-white/[0.12] dark:focus:bg-white/[0.05]',
-                            'disabled:opacity-50 disabled:cursor-not-allowed'
-                        )}
-                    />
-                </div>
-
-                {/* Coin Selector - col-span-2 */}
-                <div className="col-span-2">
-                    <CoinSelectorDropdown
-                        value={row.coin}
-                        onChange={handleCoinChange}
-                        disabled={disabled}
-                        compact
-                    />
-                </div>
-
-                {/* Delete - col-span-1 */}
-                <div className="col-span-1 flex justify-end">
-                    <button
-                        type="button"
-                        onClick={handleRemove}
-                        disabled={disabled}
-                        className={cn(
-                            'w-[42px] h-[42px] rounded-xl flex items-center justify-center transition-all duration-200',
-                            'text-gray-400 hover:text-red-500 hover:bg-red-50',
-                            'dark:text-gray-600 dark:hover:text-red-400 dark:hover:bg-red-500/10',
-                            'opacity-0 group-hover:opacity-100',
-                            'disabled:opacity-30 disabled:cursor-not-allowed'
-                        )}
-                        title="Remove recipient"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </button>
-                </div>
+                <button
+                    type="button"
+                    onClick={handleRemove}
+                    disabled={disabled}
+                    className="w-8 h-8 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+                    title="Delete Row"
+                >
+                    <Trash2 className="w-4 h-4" />
+                </button>
             </div>
 
-            {/* Mobile: Stacked layout */}
-            <div className="flex flex-col gap-3 sm:hidden">
+            {/* Input 1: Address (Full Width) */}
+            <div className="w-full">
                 <AddressInput
                     value={row.address}
                     onChange={handleAddressChange}
@@ -189,19 +124,23 @@ const TransferRow: React.FC<TransferRowProps> = ({
                     resolvedAddress={row.resolvedAddress}
                     error={row.addressStatus === 'invalid' ? (row.error || 'Invalid address') : undefined}
                     onResolve={handleResolve}
-                    placeholder="EQ... or UQ..."
+                    placeholder="Recipient address or .ton"
                     disabled={disabled}
                 />
-                <div className="flex gap-3">
-                    <div className="flex-1">
-                        <AmountInput
-                            value={row.amount}
-                            onChange={handleAmountChange}
-                            coin={row.coin}
-                            placeholder="10"
-                            disabled={disabled}
-                        />
-                    </div>
+            </div>
+
+            {/* Input 2 & 3: Amount + Coin (2 Columns Side-by-Side) */}
+            <div className="flex flex-row gap-3 w-full">
+                <div className="flex-1 min-w-0">
+                    <AmountInput
+                        value={row.amount}
+                        onChange={handleAmountChange}
+                        coin={row.coin}
+                        placeholder="0.0"
+                        disabled={disabled}
+                    />
+                </div>
+                <div className="flex-1 min-w-0">
                     <CoinSelectorDropdown
                         value={row.coin}
                         onChange={handleCoinChange}
@@ -209,33 +148,28 @@ const TransferRow: React.FC<TransferRowProps> = ({
                         compact
                     />
                 </div>
-                <div className="flex gap-3 items-center">
-                    <input
-                        type="text"
-                        value={row.comment}
-                        onChange={handleCommentChange}
-                        placeholder="memo (optional)"
-                        disabled={disabled}
-                        autoComplete="off"
-                        className={cn(
-                            'flex-1 h-[42px] rounded-xl border px-4',
-                            'border-gray-200 bg-gray-50 text-gray-800 placeholder:text-gray-400',
-                            'dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:placeholder:text-gray-600',
-                            'text-sm outline-none transition-all duration-200',
-                            'hover:border-gray-300 focus:border-blue-500/50',
-                            'dark:hover:border-white/[0.12]',
-                            'disabled:opacity-50 disabled:cursor-not-allowed'
-                        )}
-                    />
-                    <button
-                        type="button"
-                        onClick={handleRemove}
-                        disabled={disabled}
-                        className="w-[42px] h-[42px] rounded-xl flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 dark:text-gray-600 dark:hover:text-red-400 dark:hover:bg-red-500/10 transition-all"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </button>
-                </div>
+            </div>
+
+            {/* Input 4: Memo (Full Width) */}
+            <div className="w-full">
+                <input
+                    type="text"
+                    value={row.comment}
+                    onChange={handleCommentChange}
+                    placeholder="Memo (optional)"
+                    disabled={disabled}
+                    autoComplete="off"
+                    spellCheck="false"
+                    className={cn(
+                        'w-full h-[46px] rounded-[14px] border border-transparent dark:border-white/[0.03] px-4',
+                        'bg-gray-100 dark:bg-black/40 text-gray-800 dark:text-gray-200',
+                        'text-sm outline-none transition-all duration-300',
+                        'placeholder:text-gray-400 dark:placeholder:text-gray-600',
+                        'hover:bg-gray-200 dark:hover:bg-black/60',
+                        'focus:bg-white dark:focus:bg-black/60 focus:border-blue-500/40 focus:shadow-sm',
+                        'disabled:opacity-50 disabled:cursor-not-allowed'
+                    )}
+                />
             </div>
         </div>
     );

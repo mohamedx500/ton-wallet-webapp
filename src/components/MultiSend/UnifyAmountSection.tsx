@@ -63,10 +63,10 @@ const UnifyAmountSection: React.FC = () => {
 
             {/* Amount input with coin icon */}
             <div className={cn(
-                'flex items-center gap-2 w-full h-[42px] rounded-xl border px-4',
-                'border-gray-200 bg-gray-50 dark:border-white/[0.08] dark:bg-white/[0.03]',
-                'transition-all duration-200',
-                'focus-within:border-blue-500/50 focus-within:bg-white dark:focus-within:bg-white/[0.05]'
+                'flex items-center gap-2 w-full h-[46px] rounded-[14px] border border-transparent px-4',
+                'bg-gray-100 dark:border-white/[0.03] dark:bg-black/40',
+                'transition-all duration-300 shadow-sm',
+                'focus-within:border-blue-500/40 focus-within:bg-white dark:focus-within:bg-black/60'
             )}>
                 <CoinBadge coin={dominantCoin} size="sm" />
                 <input
@@ -85,21 +85,23 @@ const UnifyAmountSection: React.FC = () => {
                 />
             </div>
 
-            {/* Apply button */}
-            <button
-                type="button"
-                onClick={handleApply}
-                disabled={isSending || !hasValidAmount}
-                className={cn(
-                    'w-full h-[40px] rounded-xl text-sm font-semibold transition-all duration-200 border',
-                    'disabled:opacity-40 disabled:cursor-not-allowed',
-                    hasValidAmount
-                        ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-500/25 hover:bg-emerald-100 dark:hover:bg-emerald-500/20'
-                        : 'bg-gray-50 dark:bg-white/[0.03] text-gray-400 dark:text-gray-500 border-gray-200 dark:border-white/[0.06]'
-                )}
-            >
-                Apply to All
-            </button>
+            <div className="flex flex-col gap-3 mt-1">
+                {/* Apply button */}
+                <button
+                    type="button"
+                    onClick={handleApply}
+                    disabled={isSending || !hasValidAmount}
+                    className={cn(
+                        'w-full h-[46px] rounded-[14px] text-sm font-semibold transition-all duration-300',
+                        'disabled:opacity-40 disabled:cursor-not-allowed',
+                        hasValidAmount
+                            ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20'
+                            : 'bg-gray-100 dark:bg-white/[0.03] text-gray-400 dark:text-gray-500'
+                    )}
+                >
+                    Apply to All
+                </button>
+            </div>
 
             {/* Preview text */}
             {hasValidAmount && (

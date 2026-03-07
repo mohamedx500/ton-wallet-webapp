@@ -75,93 +75,90 @@ const MultiSendModal: React.FC<MultiSendModalProps> = ({ darkMode = false, langu
     const isSending = execution.phase !== 'idle' && execution.phase !== 'complete' && execution.phase !== 'error';
     const showProgressOverlay = showProgress && (isSending || execution.phase === 'complete' || execution.phase === 'error');
 
-    // CRITICAL: Use createPortal to render on document.body
-    // The modal is placed inside the wallet's max-w-md overflow-hidden container in App.tsx.
-    // Without a portal, fixed positioning cannot escape the parent's overflow clipping.
-    return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto">
-            {/* Backdrop */}
+    // Constraint: Absolute positioning within the relative parent (App.tsx container)
+    // Ensures the backdrop and modal stay inside the max-w-md boundary.
+    return (
+        <div className="absolute inset-0 z-[100] flex items-end sm:items-center justify-center overflow-hidden">
+            {/* Backdrop - now absolute to parent container */}
             <div
-                className="fixed inset-0 bg-black/40 dark:bg-black/70 backdrop-blur-md"
+                className="absolute inset-0 bg-black/60 dark:bg-black/80 backdrop-blur-sm transition-opacity"
                 onClick={handleClose}
             />
 
-            {/* Modal — wide on desktop, full on mobile */}
-            <div className="relative w-full max-w-6xl mx-auto my-0 sm:my-6 px-0 sm:px-6 lg:px-8 z-10 min-h-screen sm:min-h-0">
+            {/* Modal Container */}
+            <div className="relative w-full z-10 flex flex-col justify-end h-full pointer-events-none">
                 <div className={cn(
-                    'w-full border',
-                    'rounded-none sm:rounded-2xl',
-                    'border-transparent sm:border-gray-200 bg-white shadow-2xl shadow-black/10',
-                    'dark:sm:border-white/[0.07] dark:bg-[#0c0e15] dark:shadow-black/70',
-                    'flex flex-col min-h-screen sm:min-h-0 sm:max-h-[90vh] overflow-hidden',
-                    'animate-scale-in'
+                    'w-full flex-shrink-0 pointer-events-auto',
+                    'rounded-t-[32px]', // Match main app's premium curved feel
+                    'bg-white dark:bg-[#0A0C10]',
+                    'flex flex-col h-[90%] overflow-hidden',
+                    'shadow-[0_-8px_40px_rgba(0,0,0,0.15)] dark:shadow-[0_-8px_40px_rgba(0,0,0,0.5)]',
+                    'animate-slide-up border-t border-white/[0.05]'
                 )}>
+                    {/* Visual drag handle */}
+                    <div className="w-10 h-1 bg-gray-200 dark:bg-white/10 rounded-full mx-auto mt-3 shrink-0" />
+
                     {/* ── Header ──────────────────────────────────────── */}
-                    <div className="flex-shrink-0 border-b border-gray-200 dark:border-white/[0.06]">
+                    <div className="flex-shrink-0 relative">
                         {/* Title row */}
-                        <div className="flex items-center justify-between px-3 sm:px-6 lg:px-8 pt-3 sm:pt-5 pb-2 sm:pb-4">
-                            <div className="flex items-center gap-2.5 sm:gap-4">
-                                <img
-                                    src="https://assets.dedust.io/images/ton.webp"
-                                    alt="TON"
-                                    className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl object-cover flex-shrink-0"
-                                />
+                        <div className="flex items-center justify-between px-6 pt-4 pb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-500/10 rounded-xl">
+                                    <Users className="w-6 h-6 text-blue-500" />
+                                </div>
                                 <div>
-                                    <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-white">Multi-Send</h2>
-                                    <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5">Batch transfers on TON</p>
+                                    <h2 className="text-lg font-bold text-gray-900 dark:text-white leading-tight">Multi-Send</h2>
+                                    <p className="text-[11px] font-medium text-gray-500 uppercase tracking-wider">Batch transfers</p>
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
-                                <span className="text-[11px] sm:text-xs font-medium text-gray-500">{rows.length} recipients</span>
+                            <div className="flex items-center gap-3">
+                                <span className="text-[11px] font-bold py-1 px-2.5 bg-gray-100 dark:bg-white/5 rounded-lg text-gray-500">
+                                    {rows.length} {rows.length === 1 ? 'RECIPIENT' : 'RECIPIENTS'}
+                                </span>
                                 <button
                                     type="button"
                                     onClick={handleClose}
                                     disabled={isSending}
                                     className={cn(
-                                        'w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center transition-all',
-                                        'text-gray-400 hover:text-gray-900 hover:bg-gray-100',
-                                        'dark:text-gray-500 dark:hover:text-white dark:hover:bg-white/[0.06]',
-                                        'disabled:opacity-30 disabled:cursor-not-allowed'
+                                        'w-9 h-9 rounded-full flex items-center justify-center transition-all',
+                                        'bg-gray-100 text-gray-500 hover:text-gray-900 hover:bg-gray-200',
+                                        'dark:bg-white/5 dark:text-gray-400 dark:hover:text-white dark:hover:bg-white/10',
+                                        'disabled:opacity-30'
                                     )}
                                 >
-                                    <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                                    <X className="w-5 h-5" />
                                 </button>
                             </div>
                         </div>
 
-                        {/* Wallet context info + Mode selector */}
+                        {/* Mode selector */}
                         {!isUnsupportedWallet && (
-                            <div className="flex flex-col gap-2 sm:gap-3 px-3 sm:px-6 lg:px-8 pb-3 sm:pb-4">
+                            <div className="px-6 pb-4">
                                 <ModeSelectorBar />
                             </div>
                         )}
                     </div>
 
                     {/* ── Scrollable Content ──────────────────────────── */}
-                    <div className="flex-1 overflow-y-auto min-h-0">
+                    <div className="flex-1 overflow-y-auto no-scrollbar pb-32">
                         {isUnsupportedWallet ? (
-                            <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center h-full max-h-[500px] gap-4">
-                                <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center mb-2">
+                            <div className="flex flex-col items-center justify-center p-12 text-center gap-4">
+                                <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center">
                                     <AlertTriangle className="w-8 h-8 text-red-500" />
                                 </div>
                                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                                     Multi-Send Not Supported
                                 </h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
-                                    Your current wallet version <b>({walletType})</b> only supports single transfers. To use Multi-Send, please deploy or switch to a W5 or Highload V3 wallet.
+                                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-[280px] mx-auto">
+                                    Your current wallet version <b>({walletType})</b> requires an upgrade to support batch transfers.
                                 </p>
                             </div>
                         ) : (
-                            <>
-                                <div className="px-2 sm:px-6 lg:px-8 py-3 sm:py-6">
-                                    <TransferRowList />
-                                </div>
-
-                                <div className="px-2 sm:px-6 lg:px-8 pb-3 sm:pb-6">
-                                    <UnificationPanel />
-                                </div>
-                            </>
+                            <div className="px-5 space-y-6 py-4">
+                                <TransferRowList />
+                                <UnificationPanel />
+                            </div>
                         )}
                     </div>
 
@@ -184,8 +181,7 @@ const MultiSendModal: React.FC<MultiSendModalProps> = ({ darkMode = false, langu
                     />
                 </div>
             </div>
-        </div>,
-        document.body
+        </div>
     );
 };
 

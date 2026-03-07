@@ -15,6 +15,7 @@ import {
     Address,
     beginCell,
     toNano,
+    fromNano,
     Cell,
     SendMode,
     OutActionSendMsg
@@ -156,15 +157,15 @@ export class HighloadWalletV3Service {
                 throw new Error(`Maximum ${HIGHLOAD_CONSTANTS.MAX_ACTIONS} transactions per batch`);
             }
 
-            // 1. Calculate the total TON required to execute all transfers in the batch
-            let totalValueRequired = toNano('0.02'); // Basic fees for unpacking the batch
+            // 1. Total the actual values required for all transactions (whether TON amounts or Jetton fees)
+            let totalActionsValue = 0n;
 
             const safeMessages: OutActionSendMsg[] = messages.map(m => {
                 if (!m.outMsg) throw new Error('Missing outMsg in transfer payload');
 
-                // Add the value of each internal transfer to the required balance
                 if ((m.outMsg as any).info?.type === 'internal') {
-                    totalValueRequired += (m.outMsg as any).info.value.coins;
+                    // We collect the basic transfer value
+                    totalActionsValue += (m.outMsg as any).info.value.coins;
                 }
 
                 return {
@@ -180,6 +181,19 @@ export class HighloadWalletV3Service {
                 timeout: this.timeout,
             }, HIGHLOAD_WALLET_V3_CODE, this.workchain);
 
+            // 2. Dynamic Calculation of Batch Unpacker Fees (TVM Overhead)
+            // The wallet requires a basic operating fee of ~0.01 TON + approximately 0.002 TON per address within the batch
+            const unpackerGas = toNano('0.01') + (BigInt(messages.length) * toNano('0.002'));
+            const exactValueToSend = totalActionsValue + unpackerGas;
+
+            // 3. [Smart Warning] Checks the actual wallet balance before sending to the blockchain
+            const currentBalance = await client.getBalance(wallet.address);
+
+            if (currentBalance < exactValueToSend) {
+                // This is the error that will appear in red on the interface if the balance is insufficient
+                throw new Error(`Insufficient TON balance! Batch requires ${fromNano(exactValueToSend)} TON, but wallet only has ${fromNano(currentBalance)} TON.`);
+            }
+
             const provider = client.provider(wallet.address, wallet.init ?? undefined);
             const queryIdStore = this.getQueryIdStore(wallet.address.toString());
             const queryId = queryIdStore.getNext();
@@ -193,7 +207,7 @@ export class HighloadWalletV3Service {
                 queryId,
                 this.timeout,
                 createdAt,
-                totalValueRequired // 2. Pay in millimes to avoid full withdrawals and failure
+                exactValueToSend // 4. Paying in millimes without any hardcode
             );
 
             return { success: true, queryId: queryId.getQueryId() };

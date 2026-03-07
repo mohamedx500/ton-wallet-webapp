@@ -210,10 +210,18 @@ export class RetryService {
                 // Don't sleep on the last attempt
                 if (attempt < maxRetries - 1) {
                     // Exponential backoff with jitter
-                    const delay = Math.min(
-                        baseDelay * Math.pow(2, attempt) + Math.random() * 1000,
+                    let delay = Math.min(
+                        baseDelay * Math.pow(2, attempt) + Math.random() * 500,
                         maxDelay
                     );
+
+                    // If we explicitly hit a 429, we MUST hard pause the queue 
+                    // longer to clear the TonAPI rate limiter bucket
+                    if (errorStr.includes('429') || errorStr.includes('too many requests')) {
+                        console.warn('429 Rate Limit Hit - Forcing extended queue pause');
+                        delay = Math.max(delay, 2000 * Math.pow(2, attempt));
+                    }
+
                     console.log(`Retrying in ${Math.round(delay)}ms...`);
                     await this.sleep(delay);
                 }
@@ -350,7 +358,7 @@ export function createReliableApiClient(network = 'mainnet') {
 
 // Export singleton instances
 export const retryService = new RetryService();
-export const requestQueue = new RequestQueue(2); // 2 requests per second
+export const requestQueue = new RequestQueue(1); // 1 request per second max untuk TonAPI free tier
 
 export default {
     RequestQueue,

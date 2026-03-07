@@ -141,9 +141,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // Track last refresh to debounce
     const [lastRefresh, setLastRefresh] = useState<number>(0);
     const REFRESH_COOLDOWN = 15000; // Increased to 15 seconds to be safer with rate limits
+    const isFetching = React.useRef(false); // Fetch lock for TonAPI throttling
 
     const refreshData = async () => {
         if (!walletAddress) return;
+        if (isFetching.current) {
+            console.log('[WalletContext] Refresh skipped - fetch already in progress');
+            return;
+        }
 
         // Check network status before refreshing
         const networkStatus = networkService.getStatus();
@@ -159,6 +164,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             return;
         }
         setLastRefresh(now);
+        isFetching.current = true;
 
         try {
             // 1. Get Rates
@@ -206,7 +212,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                 const displaySymbol = isUsdtSymbol(symbol) ? 'USD₮' : symbol;
 
                 // Get price from jetton metadata (TonAPI includes rates in jetton response)
-                //The rates are available in j.price or we fetch from rates endpoint
                 let price = 0;
                 let diff = '0.00%';
 
@@ -214,13 +219,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                     price = usdtPrice;
                     diff = usdtDiff;
                 } else if (j.price) {
-                    // TonAPI provides price info in the jetton balance response
                     price = j.price.prices?.USD || j.price.value || 0;
                     diff = j.price.diff_24h?.USD || '0.00%';
                 }
 
                 const val = amount * price;
-
                 totalUsd += val;
 
                 tokenList.push({
@@ -232,8 +235,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                     price: price,
                     diff: diff,
                     rawBalance: amount,
-                    walletAddress: j.wallet_address?.address, // User's jetton wallet address
-                    masterAddress: j.jetton.address,          // Jetton master contract address
+                    walletAddress: j.wallet_address?.address,
+                    masterAddress: j.jetton.address,
                     decimals: j.jetton.decimals || 9
                 });
             });
@@ -330,6 +333,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             } else {
                 console.error('[WalletContext] Refresh failed:', e);
             }
+        } finally {
+            isFetching.current = false;
         }
     };
 
