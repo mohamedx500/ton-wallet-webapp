@@ -152,28 +152,48 @@ export class HighloadWalletV3Service {
         try {
             if (!messages || messages.length === 0) throw new Error('No transactions to send');
 
+            if (messages.length > HIGHLOAD_CONSTANTS.MAX_ACTIONS) {
+                throw new Error(`Maximum ${HIGHLOAD_CONSTANTS.MAX_ACTIONS} transactions per batch`);
+            }
+
+            // 1. Calculate the total TON required to execute all transfers in the batch
+            let totalValueRequired = toNano('0.02'); // Basic fees for unpacking the batch
+
+            const safeMessages: OutActionSendMsg[] = messages.map(m => {
+                if (!m.outMsg) throw new Error('Missing outMsg in transfer payload');
+
+                // Add the value of each internal transfer to the required balance
+                if ((m.outMsg as any).info?.type === 'internal') {
+                    totalValueRequired += (m.outMsg as any).info.value.coins;
+                }
+
+                return {
+                    type: 'sendMsg' as const,
+                    mode: m.mode !== undefined ? m.mode : SendMode.PAY_GAS_SEPARATELY,
+                    outMsg: m.outMsg
+                };
+            });
+
             const wallet = HighloadWalletV3.createFromConfig({
                 publicKey: keyPair.publicKey,
                 subwalletId: this.subwalletId,
                 timeout: this.timeout,
             }, HIGHLOAD_WALLET_V3_CODE, this.workchain);
 
-            // Use Provider and Wallet directly without client.open to prevent data shifting
             const provider = client.provider(wallet.address, wallet.init ?? undefined);
             const queryIdStore = this.getQueryIdStore(wallet.address.toString());
             const queryId = queryIdStore.getNext();
-
             const createdAt = Math.floor(Date.now() / 1000) - 60;
 
-            // Direct call to guarantee every argument reaches the correct position
             await wallet.sendBatch(
                 provider,
                 keyPair.secretKey,
-                messages,
+                safeMessages,
                 this.subwalletId,
                 queryId,
                 this.timeout,
-                createdAt
+                createdAt,
+                totalValueRequired // 2. Pay in millimes to avoid full withdrawals and failure
             );
 
             return { success: true, queryId: queryId.getQueryId() };
