@@ -50,10 +50,15 @@ coverage/
 *.tmp
 *.temp
 
-ton-highload_wallet_v3 
+# Mistakenly tracked files
+ton-highload_wallet_v3
 prompts
-
-
 assignment
 require
 done.md
+commit-msg.txt
+plans/
+PLANS/
+IMPLEMENTATION_PROGRESS.md
+test_out.txt
+type_errors.txt
