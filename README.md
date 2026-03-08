@@ -105,9 +105,76 @@ Additional capabilities include per-row address and amount validation, dynamic c
 
 ## Getting Started
 
-1. Install dependencies.
-2. Copy `.env.example` to `.env` and add the required API keys (see the example file for instructions).
-3. Start the development server or build for production.
+### Prerequisites
+
+- Node.js (version 18 or higher)
+- npm or yarn
+
+### Installation
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/mohamedx500/ton-wallet-webapp.git
+   cd ton-wallet-webapp
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables:**
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Edit the `.env` file and add your API keys:
+   - Get a TonAPI key from [https://tonconsole.com](https://tonconsole.com)
+   - Get a Toncenter API key from [@tonapibot](https://t.me/tonapibot) on Telegram
+   
+   Example:
+   ```
+   VITE_TONAPI_KEY=your_tonapi_key_here
+   VITE_TONCENTER_API_KEY=your_toncenter_api_key_here
+   ```
+
+### Development
+
+**Start the development server:**
+```bash
+npm run dev
+```
+
+The app will be available at `http://localhost:5173`
+
+### Build for Production
+
+**Build the project:**
+```bash
+npm run build
+```
+
+**Preview the production build:**
+```bash
+npm run preview
+```
+
+### Testing
+
+**Run tests:**
+```bash
+npm test
+```
+
+**Run tests in watch mode:**
+```bash
+npm run test:watch
+```
+
+**Type checking:**
+```bash
+npm run type-check
+```
 
 ---
 
