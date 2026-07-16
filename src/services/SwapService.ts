@@ -326,7 +326,11 @@ export class SwapService {
      * Get token by symbol
      */
     getToken(symbol: string): TokenInfo | null {
-        const token = Object.values(this.tokens).find(t => t.symbol.toUpperCase() === symbol.toUpperCase());
+        const searchSymbol = symbol.toUpperCase() === 'USD₮' ? 'USDT' : symbol.toUpperCase();
+        const token = Object.values(this.tokens).find(t => {
+            const tSym = t.symbol.toUpperCase() === 'USD₮' ? 'USDT' : t.symbol.toUpperCase();
+            return tSym === searchSymbol;
+        });
         return token || null;
     }
 

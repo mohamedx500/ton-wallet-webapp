@@ -1109,7 +1109,11 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
     };
 
     const getBalance = (symbol: string) => {
-        const token = tokens.find(t => t.symbol === symbol);
+        const token = tokens.find(t => 
+            t.symbol === symbol || 
+            (symbol === 'USDT' && t.symbol === 'USD₮') || 
+            (symbol === 'USD₮' && t.symbol === 'USDT')
+        );
         return token?.rawBalance || 0;
     };
 
