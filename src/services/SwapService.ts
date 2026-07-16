@@ -326,7 +326,8 @@ export class SwapService {
      * Get token by symbol
      */
     getToken(symbol: string): TokenInfo | null {
-        return this.tokens[symbol.toUpperCase()] || null;
+        const token = Object.values(this.tokens).find(t => t.symbol.toUpperCase() === symbol.toUpperCase());
+        return token || null;
     }
 
     // ========================================================================
@@ -446,7 +447,10 @@ export class SwapService {
                     `ask_address=${toAddress}&` +
                     `units=${amountUnits}&` +
                     `slippage_tolerance=${this.slippageTolerance}`,
-                    { signal: controller.signal }
+                    { 
+                        method: 'POST',
+                        signal: controller.signal 
+                    }
                 );
 
                 clearTimeout(timeoutId);

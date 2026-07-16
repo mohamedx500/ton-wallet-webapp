@@ -1082,12 +1082,19 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
     ];
 
     const getToken = (symbol: string) => {
+        const apiSymbol = symbol === 'Gram' ? 'TON' : symbol;
         // First try to find in availableTokens (from API)
-        const token = availableTokens.find(t => t.symbol === symbol);
-        if (token) return token;
+        const token = availableTokens.find(t => t.symbol === symbol || t.symbol === apiSymbol);
+        if (token) {
+            return {
+                ...token,
+                symbol: symbol === 'Gram' ? 'Gram' : token.symbol,
+                name: symbol === 'Gram' ? 'Gram' : token.name
+            };
+        }
 
         // Fallback to TON_TOKENS from SwapService
-        const fallbackToken = TON_TOKENS[symbol];
+        const fallbackToken = Object.values(TON_TOKENS).find(t => t.symbol === symbol || t.symbol === apiSymbol);
         if (fallbackToken) {
             return {
                 symbol: fallbackToken.symbol,
