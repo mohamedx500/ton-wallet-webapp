@@ -794,7 +794,7 @@ export class SwapService {
                 askJettonWallet, // Use pool's jetton wallet from API
                 amountUnits,
                 minOutputUnits,
-                offerJettonWallet // Pool's pTON wallet from API (critical for routing)
+                rawData
             );
         } else if (toToken.address === 'native') {
             // Jetton -> TON swap
@@ -803,7 +803,8 @@ export class SwapService {
                 fromToken.address,
                 askJettonWallet,
                 amountUnits,
-                minOutputUnits
+                minOutputUnits,
+                rawData
             );
         } else {
             // Jetton -> Jetton swap
@@ -839,27 +840,33 @@ export class SwapService {
         askJettonAddress: string,
         offerUnits: string,
         minAskUnits: string,
-        ptonWalletAddress?: string // From API offer_jetton_wallet
+        rawData?: any
     ): SwapTransaction {
         // Parse addresses
         const userAddress = Address.parse(senderAddress);
         const askJettonWallet = Address.parse(askJettonAddress);
 
-        // STON.fi V1 pTON Wallet (Fixed, Known Reliable Address)
-        // We revert to V1 because V2 routing data is missing from the API for TON inputs.
-        // V1 is battle-tested and we know the correct router proxy address.
-        const ptonWallet = 'EQARULUYsmJq1RiZ-YiH-IJLcAZUVkVff-KBPwEmmaQGH6aC';
+        const isV2 = rawData?.router?.major_version === 2;
+        const routerAddress = rawData?.router?.address || STONFI_ROUTER_V1;
+        
+        // STON.fi pTON Wallet
+        const ptonWallet = isV2 
+            ? (rawData?.router?.pton_master_address || 'EQCM3B12QK1e4y_S8PRLyIyCKEZ5xBWJSCRXtyprNCvI6eE_') 
+            : 'EQARULUYsmJq1RiZ-YiH-IJLcAZUVkVff-KBPwEmmaQGH6aC';
 
-        console.log('[SwapService] Building STON.fi V1 TON->Jetton swap:', {
+        console.log(`[SwapService] Building STON.fi ${isV2 ? 'V2' : 'V1'} TON->Jetton swap:`, {
             ptonWallet,
-            askJettonWallet: askJettonAddress, // CRITICAL: This is the POOL'S jetton wallet (correct)
+            askJettonWallet: askJettonAddress,
             userAddress: senderAddress,
+            routerAddress
         });
 
-        // Build STON.fi V1 swap payload
-        // V1 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr) | referral...
+        const opCode = isV2 ? 0x6664de2a : STONFI_SWAP_OP; // V2 SWAP vs V1 SWAP
+
+        // Build STON.fi swap payload
+        // V1/V2 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr) | referral...
         const swapPayload = beginCell()
-            .storeUint(STONFI_SWAP_OP, 32)     // V1 swap operation code: 0x25938561
+            .storeUint(opCode, 32)
             .storeAddress(askJettonWallet)     // TOKEN_WALLET: Must be the POOL'S jetton wallet (from API)
             .storeCoins(BigInt(minAskUnits))   // min_out
             .storeAddress(userAddress)         // to_address - receiving address
@@ -905,16 +912,20 @@ export class SwapService {
         offerJettonAddress: string,
         askJettonAddress: string,
         offerUnits: string,
-        minAskUnits: string
+        minAskUnits: string,
+        rawData?: any
     ): SwapTransaction {
         // Parse addresses
         const userAddress = Address.parse(senderAddress);
         const askJetton = Address.parse(askJettonAddress);
 
-        // Build V1 swap forward payload for Jetton -> TON
-        // V1 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr)
+        const isV2 = rawData?.router?.major_version === 2;
+        const routerAddress = rawData?.router?.address || STONFI_ROUTER_V1;
+        const opCode = isV2 ? 0x6664de2a : STONFI_SWAP_OP;
+
+        // Build swap forward payload for Jetton -> TON
         const forwardPayload = beginCell()
-            .storeUint(STONFI_SWAP_OP, 32)     // V1 swap operation code
+            .storeUint(opCode, 32)
             .storeAddress(askJetton) // pTON wallet for router (we want TON back)
             .storeCoins(BigInt(minAskUnits))   // min_out - minimum TON to receive
             .storeAddress(userAddress)         // to_address - where to send TON
@@ -922,8 +933,8 @@ export class SwapService {
             .storeAddress(userAddress)         // ref_address (referral)
             .endCell();
 
-        console.log('[SwapService] Jetton->TON swap (V1):', {
-            router: STONFI_ROUTER_V1,
+        console.log(`[SwapService] Jetton->TON swap (${isV2 ? 'V2' : 'V1'}):`, {
+            router: routerAddress,
             jettonMaster: offerJettonAddress,
             amount: offerUnits,
             minOutput: minAskUnits,
@@ -932,7 +943,7 @@ export class SwapService {
         return {
             type: 'jetton_transfer',
             jettonMaster: offerJettonAddress,
-            destination: STONFI_ROUTER_V1,
+            destination: routerAddress,
             amount: offerUnits,
             forwardAmount: toNano('0.2').toString(), // Gas for forward message
             forwardPayload: forwardPayload.toBoc().toString('base64'),
@@ -957,16 +968,20 @@ export class SwapService {
         offerJettonAddress: string,
         askJettonAddress: string,
         offerUnits: string,
-        minAskUnits: string
+        minAskUnits: string,
+        rawData?: any
     ): SwapTransaction {
         // Parse addresses
         const userAddress = Address.parse(senderAddress);
         const askJetton = Address.parse(askJettonAddress);
 
-        // Build V1 swap forward payload for Jetton -> Jetton
-        // V1 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr)
+        const isV2 = rawData?.router?.major_version === 2;
+        const routerAddress = rawData?.router?.address || STONFI_ROUTER_V1;
+        const opCode = isV2 ? 0x6664de2a : STONFI_SWAP_OP;
+
+        // Build swap forward payload for Jetton -> Jetton
         const forwardPayload = beginCell()
-            .storeUint(STONFI_SWAP_OP, 32)     // V1 swap operation code
+            .storeUint(opCode, 32)
             .storeAddress(askJetton)           // target jetton wallet
             .storeCoins(BigInt(minAskUnits))   // min_out
             .storeAddress(userAddress)         // to_address
@@ -974,8 +989,8 @@ export class SwapService {
             .storeAddress(userAddress)         // ref_address (referral)
             .endCell();
 
-        console.log('[SwapService] Jetton->Jetton swap (V1):', {
-            router: STONFI_ROUTER_V1,
+        console.log(`[SwapService] Jetton->Jetton swap (${isV2 ? 'V2' : 'V1'}):`, {
+            router: routerAddress,
             offerJetton: offerJettonAddress,
             askJetton: askJettonAddress,
             amount: offerUnits,
@@ -985,9 +1000,9 @@ export class SwapService {
         return {
             type: 'jetton_transfer',
             jettonMaster: offerJettonAddress,
-            destination: STONFI_ROUTER_V1,
+            destination: routerAddress,
             amount: offerUnits,
-            forwardAmount: toNano('0.24').toString(), // Forward gas
+            forwardAmount: toNano('0.25').toString(), // STON.fi recommends 0.25 TON for cross-swaps
             forwardPayload: forwardPayload.toBoc().toString('base64'),
             gasAmount: toNano('0.35').toString(), // Total gas
         };
