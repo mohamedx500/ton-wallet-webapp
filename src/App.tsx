@@ -191,10 +191,62 @@ export default function TonWallet() {
 
                 // Execute the swap based on transaction type
                 if (swapTx.type === 'jetton_transfer') {
-                    // For Jetton swaps, we need to use sendJettonTransfer
-                    // This requires the WalletContext to expose a jetton transfer method
-                    const swapInfo = `${pendingSwap.amount} ${pendingSwap.fromToken} → ${pendingSwap.quote.outputAmount} ${pendingSwap.toToken}`;
-                    alert(`Jetton-to-Jetton/TON swaps require additional implementation.\n\n${swapInfo}\nProvider: ${pendingSwap.provider === 'stonfi' ? 'STON.fi' : 'DeDust'}`);
+                    const { beginCell, Address, Cell } = await import('@ton/ton');
+                    
+                    const userJettonWallet = tokens.find(t => 
+                        t.symbol === pendingSwap.fromToken || 
+                        (pendingSwap.fromToken === 'USDT' && t.symbol === 'USD₮') || 
+                        (pendingSwap.fromToken === 'USD₮' && t.symbol === 'USDT')
+                    )?.walletAddress;
+
+                    if (!userJettonWallet) {
+                        throw new Error(`Could not find your jetton wallet for ${pendingSwap.fromToken}`);
+                    }
+
+                    const forwardPayloadCell = Cell.fromBase64(swapTx.forwardPayload!);
+                    
+                    const body = beginCell()
+                        .storeUint(0xf8a7ea5, 32) // op::transfer
+                        .storeUint(0, 64) // query_id
+                        .storeCoins(BigInt(swapTx.amount!))
+                        .storeAddress(Address.parse(swapTx.destination!))
+                        .storeAddress(Address.parse(walletAddress || '')) // response_destination
+                        .storeBit(0) // custom_payload
+                        .storeCoins(BigInt(swapTx.forwardAmount!))
+                        .storeBit(1) // forward_payload as reference
+                        .storeRef(forwardPayloadCell)
+                        .endCell();
+                        
+                    // Convert gasAmount from nano to TON
+                    const gasNano = BigInt(swapTx.gasAmount!);
+                    const wholeTon = gasNano / BigInt(1e9);
+                    const remainder = gasNano % BigInt(1e9);
+                    const decimalPart = remainder.toString().padStart(9, '0');
+                    const amountInTon = `${wholeTon}.${decimalPart}`.replace(/\.?0+$/, '') || '0';
+
+                    // Get mnemonic for the transaction
+                    const mnemonic = await getDecryptedSeed(password);
+
+                    // Import WalletService and send transaction WITH the swap payload
+                    const { WalletService } = await import('./services/WalletService');
+                    const walletService = new WalletService();
+
+                    await walletService.sendTransactionWithPayload(
+                        mnemonic,
+                        walletType,
+                        userJettonWallet, // recipient is the user's jetton wallet
+                        amountInTon,      // amount is the gas attached to the transaction
+                        body,             // body is the jetton transfer payload
+                        false
+                    );
+                    
+                    alert(`Swap initiated! ✅\n\n${pendingSwap.amount} ${pendingSwap.fromToken} → ${pendingSwap.quote.outputAmount} ${pendingSwap.toToken}\n\nProvider: ${pendingSwap.provider === 'stonfi' ? 'STON.fi' : 'DeDust'}\n\nPlease check your transaction history in a few minutes.`);
+
+                    // Trigger multiple refreshes to catch the transaction confirmation
+                    setTimeout(() => refreshData(), 2000);  // 2 seconds
+                    setTimeout(() => refreshData(), 5000);  // 5 seconds
+                    setTimeout(() => refreshData(), 10000); // 10 seconds
+                    setTimeout(() => refreshData(), 20000); // 20 seconds
                 } else if (swapTx.to && swapTx.value && swapTx.body) {
                     // TON -> Jetton swap - send TON to router WITH swap payload
                     // Convert nanoTON string to TON with proper decimal handling
