@@ -841,44 +841,71 @@ export class SwapService {
         minAskUnits: string,
         rawData?: any
     ): SwapTransaction {
-        // Parse addresses
         const userAddress = Address.parse(senderAddress);
         const askJettonWallet = Address.parse(askJettonAddress);
 
-        // ALWAYS use STON.fi V1 Router for stability
-        const routerAddress = STONFI_ROUTER_V1;
+        const isV2 = rawData?.router?.major_version === 2;
+        const routerAddress = rawData?.router?.address || STONFI_ROUTER_V1;
 
-        // In V1, the proxy TON address is PTON_V1_MASTER
-        const proxyTonAddress = PTON_V1_MASTER;
-        const opCode = STONFI_SWAP_OP;
+        // pTON Master is needed for TON -> Jetton
+        const proxyTonAddress = isV2 
+            ? (rawData?.router?.pton_master_address || 'EQC_1YoM8RBixN95lz7odcg6otZlTAKKQwZkXQz12nGB2eG_')
+            : PTON_V1_MASTER;
 
-        const forwardPayload = beginCell()
-            .storeUint(opCode, 32)
-            .storeAddress(askJettonWallet)     // TOKEN_WALLET
-            .storeCoins(BigInt(minAskUnits))   // min_out
-            .storeAddress(userAddress)         // to_address - receiving address
-            .storeUint(1, 1)                   // has_ref_address
-            .storeAddress(userAddress)         // ref_address (referral/refund)
-            .endCell();
+        let forwardPayload;
+        let forwardGas;
+        let opCode;
 
-        // Calculate total value
+        if (isV2) {
+            forwardGas = toNano('0.24');
+            opCode = 0x6664de2a; // V2 SWAP
+            forwardPayload = beginCell()
+                .storeUint(opCode, 32)
+                .storeAddress(askJettonWallet) // askJettonWalletAddress
+                .storeAddress(userAddress) // refundAddress
+                .storeAddress(userAddress) // excessesAddress
+                .storeUint(0, 64)   // deadline
+                .storeRef(
+                    beginCell()
+                        .storeCoins(BigInt(minAskUnits))
+                        .storeAddress(userAddress)
+                        .storeCoins(0)
+                        .storeMaybeRef(null)
+                        .storeCoins(0)
+                        .storeMaybeRef(null)
+                        .storeUint(10, 16)
+                        .storeAddress(null)
+                        .endCell()
+                )
+                .endCell();
+        } else {
+            forwardGas = toNano('0.25');
+            opCode = STONFI_SWAP_OP; // V1 SWAP
+            forwardPayload = beginCell()
+                .storeUint(opCode, 32)
+                .storeAddress(askJettonWallet)
+                .storeCoins(BigInt(minAskUnits))
+                .storeAddress(userAddress)
+                .storeUint(1, 1)
+                .storeAddress(userAddress)
+                .endCell();
+        }
+
         const swapAmount = BigInt(offerUnits);
-        const forwardGas = toNano('0.25'); // Gas for routing
         
-        // Wrap in pTON ton_transfer payload
         const proxyPayload = beginCell()
-            .storeUint(0x01f3835d, 32) // ton_transfer opcode
-            .storeUint(0, 64) // query_id
-            .storeCoins(swapAmount) // ton_amount to swap
-            .storeAddress(Address.parse(routerAddress)) // refund to router
-            .storeAddress(userAddress) // refund address
-            .storeBit(0) // custom_payload
-            .storeCoins(forwardGas) // forward_ton_amount
-            .storeBit(1) // Either Cell ^Cell (1 = ref)
-            .storeRef(forwardPayload) // forward_payload
+            .storeUint(0x01f3835d, 32)
+            .storeUint(0, 64)
+            .storeCoins(swapAmount)
+            .storeAddress(Address.parse(routerAddress))
+            .storeAddress(userAddress)
+            .storeBit(0)
+            .storeCoins(forwardGas)
+            .storeBit(1)
+            .storeRef(forwardPayload)
             .endCell();
 
-        const gasFee = toNano('0.3'); // Buffer gas for the root transaction
+        const gasFee = isV2 ? toNano('0.3') : toNano('0.3');
         const totalValue = swapAmount + gasFee;
 
         return {
@@ -891,15 +918,7 @@ export class SwapService {
     }
 
     /**
-     * Build STON.fi Jetton -> TON swap (V2 Protocol)
-     * 
-     * For V2, we transfer jettons to the router with a swap payload.
-     * The router swaps the jettons for pTON and then unwraps to native TON.
-     * 
-     * @param senderAddress - User's wallet address (for receiving TON)
-     * @param offerJettonAddress - Address of the jetton we're offering
-     * @param offerUnits - Amount of jetton to swap (in smallest units)
-     * @param minAskUnits - Minimum amount of TON to receive (slippage protection)
+     * Build STON.fi Jetton -> TON swap (V1/V2 Protocol)
      */
     private buildStonfiJettonToTonSwap(
         senderAddress: string,
@@ -909,52 +928,66 @@ export class SwapService {
         minAskUnits: string,
         rawData?: any
     ): SwapTransaction {
-        // Parse addresses
         const userAddress = Address.parse(senderAddress);
-        const askJetton = Address.parse(askJettonAddress);
+        
+        const isV2 = rawData?.router?.major_version === 2;
+        const routerAddress = rawData?.router?.address || STONFI_ROUTER_V1;
 
-        // ALWAYS use STON.fi V1 Router
-        const routerAddress = STONFI_ROUTER_V1;
+        let forwardPayload;
+        let forwardAmount;
+        let gasAmount;
 
-        // Build V1 swap forward payload for Jetton -> TON
-        const forwardPayload = beginCell()
-            .storeUint(STONFI_SWAP_OP, 32)
-            .storeAddress(askJetton) // pTON wallet for router (we want TON back)
-            .storeCoins(BigInt(minAskUnits))   // min_out - minimum TON to receive
-            .storeAddress(userAddress)         // to_address - where to send TON
-            .storeUint(1, 1)                   // has_ref_address
-            .storeAddress(userAddress)         // ref_address (referral)
-            .endCell();
-
-        console.log(`[SwapService] Jetton->TON swap (V1):`, {
-            router: routerAddress,
-            jettonMaster: offerJettonAddress,
-            amount: offerUnits,
-            minOutput: minAskUnits,
-        });
+        if (isV2) {
+            const askJetton = Address.parse(askJettonAddress);
+            forwardAmount = toNano('0.24').toString();
+            gasAmount = toNano('0.3').toString();
+            forwardPayload = beginCell()
+                .storeUint(0x6664de2a, 32)
+                .storeAddress(askJetton) // V2 pTON wallet for Router
+                .storeAddress(userAddress)
+                .storeAddress(userAddress)
+                .storeUint(0, 64)
+                .storeRef(
+                    beginCell()
+                        .storeCoins(BigInt(minAskUnits))
+                        .storeAddress(userAddress)
+                        .storeCoins(0)
+                        .storeMaybeRef(null)
+                        .storeCoins(0)
+                        .storeMaybeRef(null)
+                        .storeUint(10, 16)
+                        .storeAddress(null)
+                        .endCell()
+                )
+                .endCell();
+        } else {
+            // Must use V1 pTON Wallet for V1 router
+            const v1PtonWallet = Address.parse('EQARULUYsmJq1RiZ-YiH-IJLcAZUVkVff-KBPwEmmaQGH6aC');
+            forwardAmount = toNano('0.2').toString();
+            gasAmount = toNano('0.25').toString();
+            forwardPayload = beginCell()
+                .storeUint(STONFI_SWAP_OP, 32)
+                .storeAddress(v1PtonWallet)
+                .storeCoins(BigInt(minAskUnits))
+                .storeAddress(userAddress)
+                .storeUint(1, 1)
+                .storeAddress(userAddress)
+                .endCell();
+        }
 
         return {
             type: 'jetton_transfer',
             jettonMaster: offerJettonAddress,
             destination: routerAddress,
             amount: offerUnits,
-            forwardAmount: toNano('0.2').toString(), // 0.2 TON for V1
+            forwardAmount: forwardAmount,
             forwardPayload: forwardPayload.toBoc().toString('base64'),
-            gasAmount: toNano('0.25').toString(),
+            gasAmount: gasAmount,
         };
     }
 
     /**
-     * Build STON.fi Jetton -> Jetton swap (V2 Protocol)
-     * 
-     * For V2, we transfer jettons to the router with a swap payload.
-     * The router swaps the jettons for the desired output jetton.
-     * 
-     * @param senderAddress - User's wallet address (for receiving output tokens)
-     * @param offerJettonAddress - Address of the jetton we're offering
-     * @param askJettonAddress - Address of the jetton we want to receive
-     * @param offerUnits - Amount of jetton to swap (in smallest units)
-     * @param minAskUnits - Minimum amount of output tokens (slippage protection)
+     * Build STON.fi Jetton -> Jetton swap (V1/V2 Protocol)
      */
     private buildStonfiJettonToJettonSwap(
         senderAddress: string,
@@ -964,39 +997,59 @@ export class SwapService {
         minAskUnits: string,
         rawData?: any
     ): SwapTransaction {
-        // Parse addresses
         const userAddress = Address.parse(senderAddress);
         const askJetton = Address.parse(askJettonAddress);
+        
+        const isV2 = rawData?.router?.major_version === 2;
+        const routerAddress = rawData?.router?.address || STONFI_ROUTER_V1;
 
-        // ALWAYS use STON.fi V1 Router
-        const routerAddress = STONFI_ROUTER_V1;
+        let forwardPayload;
+        let forwardAmount;
+        let gasAmount;
 
-        // Build V1 swap forward payload for Jetton -> Jetton
-        const forwardPayload = beginCell()
-            .storeUint(STONFI_SWAP_OP, 32)
-            .storeAddress(askJetton)           // target jetton wallet
-            .storeCoins(BigInt(minAskUnits))   // min_out
-            .storeAddress(userAddress)         // to_address
-            .storeUint(1, 1)                   // has_ref_address
-            .storeAddress(userAddress)         // ref_address (referral)
-            .endCell();
-
-        console.log(`[SwapService] Jetton->Jetton swap (V1):`, {
-            router: routerAddress,
-            offerJetton: offerJettonAddress,
-            askJetton: askJettonAddress,
-            amount: offerUnits,
-            minOutput: minAskUnits,
-        });
+        if (isV2) {
+            forwardAmount = toNano('0.24').toString();
+            gasAmount = toNano('0.3').toString();
+            forwardPayload = beginCell()
+                .storeUint(0x6664de2a, 32)
+                .storeAddress(askJetton)
+                .storeAddress(userAddress)
+                .storeAddress(userAddress)
+                .storeUint(0, 64)
+                .storeRef(
+                    beginCell()
+                        .storeCoins(BigInt(minAskUnits))
+                        .storeAddress(userAddress)
+                        .storeCoins(0)
+                        .storeMaybeRef(null)
+                        .storeCoins(0)
+                        .storeMaybeRef(null)
+                        .storeUint(10, 16)
+                        .storeAddress(null)
+                        .endCell()
+                )
+                .endCell();
+        } else {
+            forwardAmount = toNano('0.2').toString();
+            gasAmount = toNano('0.25').toString();
+            forwardPayload = beginCell()
+                .storeUint(STONFI_SWAP_OP, 32)
+                .storeAddress(askJetton)
+                .storeCoins(BigInt(minAskUnits))
+                .storeAddress(userAddress)
+                .storeUint(1, 1)
+                .storeAddress(userAddress)
+                .endCell();
+        }
 
         return {
             type: 'jetton_transfer',
             jettonMaster: offerJettonAddress,
             destination: routerAddress,
             amount: offerUnits,
-            forwardAmount: toNano('0.2').toString(), // 0.2 TON for V1
+            forwardAmount: forwardAmount,
             forwardPayload: forwardPayload.toBoc().toString('base64'),
-            gasAmount: toNano('0.25').toString(),
+            gasAmount: gasAmount,
         };
     }
 
