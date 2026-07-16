@@ -112,7 +112,7 @@ export interface SwapTransaction {
 export const TON_TOKENS: Record<string, TokenInfo> = {
     TON: {
         symbol: 'Gram',
-        name: 'Toncoin',
+        name: 'Gram',
         address: 'native',
         decimals: 9,
         icon: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc',

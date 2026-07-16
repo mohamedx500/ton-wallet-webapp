@@ -146,7 +146,7 @@ export function updateSendTokenSelector(state) {
     if (!tokenSelect) return;
 
     // Clear existing options except TON
-    tokenSelect.innerHTML = `<option value="TON" data-icon="💎" data-decimals="9">💎 TON - Toncoin</option>`;
+    tokenSelect.innerHTML = `<option value="TON" data-icon="💎" data-decimals="9">💎 TON - Gram</option>`;
 
     // Add jetton options
     if (state.jettons && state.jettons.length > 0) {

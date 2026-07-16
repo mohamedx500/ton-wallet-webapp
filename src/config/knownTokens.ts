@@ -71,7 +71,7 @@ export const KNOWN_TOKENS: Record<string, TokenConfig> = {
 
     'native': {
         symbol: 'Gram',
-        name: 'Toncoin',
+        name: 'Gram',
         decimals: 9,
         masterAddress: 'native',
     },

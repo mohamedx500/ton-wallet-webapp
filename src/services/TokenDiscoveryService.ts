@@ -32,7 +32,7 @@ const FALLBACK_ICON = 'https://raw.githubusercontent.com/trustwallet/assets/mast
 const POPULAR_TOKENS_CACHE: TokenMetadata[] = [
     {
         symbol: 'Gram',
-        name: 'Toncoin',
+        name: 'Gram',
         decimals: 9,
         imageUrl: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc',
         contractAddress: 'native',
@@ -83,7 +83,7 @@ class TokenDiscoveryService {
             const tonBalance = await this.getTonBalance(walletAddress);
             tokens.push({
                 symbol: 'Gram',
-                name: 'Toncoin',
+                name: 'Gram',
                 balance: tonBalance.raw,
                 balanceFormatted: tonBalance.formatted,
                 imageUrl: POPULAR_TOKENS_CACHE[0].imageUrl,

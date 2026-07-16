@@ -132,14 +132,14 @@ export async function showTokenDetail(symbol, jettonData = null) {
 
     // Get token info
     let icon = TOKEN_ICONS[symbol.toUpperCase()] || TOKEN_ICONS['JETTON'];
-    let name = 'Toncoin';
+    let name = 'Gram';
     let balance = 0;
     let decimals = 9;
     let usdValue = 0;
     let currentPrice = 0;
 
     if (symbol === 'Gram') {
-        name = 'Toncoin';
+        name = 'Gram';
         balance = state.balance / 1e9;
         currentPrice = state.usdRate || 0;
         usdValue = balance * currentPrice;

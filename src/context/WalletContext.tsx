@@ -200,7 +200,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
             // Add TON
             tokenList.push({
-                name: 'Toncoin',
+                name: 'Gram',
                 symbol: 'Gram',
                 balance: balTon.toFixed(2),
                 value: `$${(balTon * tonPrice).toFixed(2)}`,

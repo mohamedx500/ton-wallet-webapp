@@ -22,7 +22,7 @@ const PRIVATE_KEY = import.meta.env.VITE_CHANGELLY_PRIVATE_KEY || '';
 
 // Supported currencies for the wallet
 const SUPPORTED_CURRENCIES = {
-    TON: { id: 'Gram', name: 'Toncoin', network: 'Gram' },
+    TON: { id: 'Gram', name: 'Gram', network: 'Gram' },
     USDT: { id: 'usdtton', name: 'Tether (TON)', network: 'Gram' },
     BTC: { id: 'btc', name: 'Bitcoin', network: 'btc' },
     ETH: { id: 'eth', name: 'Ethereum', network: 'eth' },
@@ -172,7 +172,7 @@ export class ChangellyService {
      */
     getSupportedCurrencies() {
         return [
-            { symbol: 'Gram', name: 'Toncoin', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png' },
+            { symbol: 'Gram', name: 'Gram', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png' },
             { symbol: 'USDT', name: 'Tether', icon: 'https://tether.to/images/logoCircle.png' },
             { symbol: 'BTC', name: 'Bitcoin', icon: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png' },
             { symbol: 'ETH', name: 'Ethereum', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png' },
