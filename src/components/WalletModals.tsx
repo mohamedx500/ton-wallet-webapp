@@ -1060,7 +1060,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                 console.error('[SwapModal] Failed to load tokens:', response.status);
                 // Fallback to minimal list if API fails
                 setAvailableTokens([
-                    { symbol: 'Gram', name: 'Gram', icon: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc', decimals: 9, address: 'native' },
+                    { symbol: 'Gram', name: 'Gram', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png', decimals: 9, address: 'native' },
                     { symbol: 'USD₮', name: 'Tether USD', icon: 'https://asset.ston.fi/img/EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs/1a87edfee9a28b05578853952e5effb8cc30af1e0fb90043aa2ce19dce490849', decimals: 6, address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs' },
                 ]);
             }
@@ -1068,7 +1068,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
             console.error('[SwapModal] Error loading tokens:', error);
             // Fallback to minimal list if API fails
             setAvailableTokens([
-                { symbol: 'Gram', name: 'Gram', icon: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc', decimals: 9, address: 'native' },
+                { symbol: 'Gram', name: 'Gram', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png', decimals: 9, address: 'native' },
                 { symbol: 'USD₮', name: 'Tether USD', icon: 'https://asset.ston.fi/img/EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs/1a87edfee9a28b05578853952e5effb8cc30af1e0fb90043aa2ce19dce490849', decimals: 6, address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs' },
             ]);
         } finally {
@@ -1089,7 +1089,8 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
             return {
                 ...token,
                 symbol: symbol === 'Gram' ? 'Gram' : token.symbol,
-                name: symbol === 'Gram' ? 'Gram' : token.name
+                name: symbol === 'Gram' ? 'Gram' : token.name,
+                icon: symbol === 'Gram' ? 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png' : token.icon
             };
         }
 
