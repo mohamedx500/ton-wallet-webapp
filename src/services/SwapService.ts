@@ -921,14 +921,38 @@ export class SwapService {
         const opCode = isV2 ? 0x6664de2a : STONFI_SWAP_OP;
 
         // Build swap forward payload for Jetton -> TON
-        const forwardPayload = beginCell()
-            .storeUint(opCode, 32)
-            .storeAddress(askJetton) // pTON wallet for router (we want TON back)
-            .storeCoins(BigInt(minAskUnits))   // min_out - minimum TON to receive
-            .storeAddress(userAddress)         // to_address - where to send TON
-            .storeUint(1, 1)                   // has_ref_address
-            .storeAddress(userAddress)         // ref_address (referral)
-            .endCell();
+        let forwardPayload;
+
+        if (isV2) {
+            forwardPayload = beginCell()
+                .storeUint(opCode, 32)
+                .storeAddress(askJetton) // askJettonWalletAddress
+                .storeAddress(userAddress) // refundAddress
+                .storeAddress(userAddress) // excessesAddress
+                .storeUint(0, 64)   // deadline (0 = no deadline)
+                .storeRef(
+                    beginCell()
+                        .storeCoins(BigInt(minAskUnits)) // minAskAmount
+                        .storeAddress(userAddress) // receiverAddress
+                        .storeCoins(0) // dexCustomPayloadForwardGasAmount
+                        .storeMaybeRef(null) // dexCustomPayload
+                        .storeCoins(0) // refundForwardGasAmount
+                        .storeMaybeRef(null) // refundPayload
+                        .storeUint(10, 16) // referralValue (10 BPS = 0.1%)
+                        .storeAddress(null) // referralAddress
+                        .endCell()
+                )
+                .endCell();
+        } else {
+            forwardPayload = beginCell()
+                .storeUint(opCode, 32)
+                .storeAddress(askJetton) // pTON wallet for router (we want TON back)
+                .storeCoins(BigInt(minAskUnits))   // min_out - minimum TON to receive
+                .storeAddress(userAddress)         // to_address - where to send TON
+                .storeUint(1, 1)                   // has_ref_address
+                .storeAddress(userAddress)         // ref_address (referral)
+                .endCell();
+        }
 
         console.log(`[SwapService] Jetton->TON swap (${isV2 ? 'V2' : 'V1'}):`, {
             router: routerAddress,
@@ -977,14 +1001,38 @@ export class SwapService {
         const opCode = isV2 ? 0x6664de2a : STONFI_SWAP_OP;
 
         // Build swap forward payload for Jetton -> Jetton
-        const forwardPayload = beginCell()
-            .storeUint(opCode, 32)
-            .storeAddress(askJetton)           // target jetton wallet
-            .storeCoins(BigInt(minAskUnits))   // min_out
-            .storeAddress(userAddress)         // to_address
-            .storeUint(1, 1)                   // has_ref_address
-            .storeAddress(userAddress)         // ref_address (referral)
-            .endCell();
+        let forwardPayload;
+
+        if (isV2) {
+            forwardPayload = beginCell()
+                .storeUint(opCode, 32)
+                .storeAddress(askJetton) // askJettonWalletAddress
+                .storeAddress(userAddress) // refundAddress
+                .storeAddress(userAddress) // excessesAddress
+                .storeUint(0, 64)   // deadline (0 = no deadline)
+                .storeRef(
+                    beginCell()
+                        .storeCoins(BigInt(minAskUnits)) // minAskAmount
+                        .storeAddress(userAddress) // receiverAddress
+                        .storeCoins(0) // dexCustomPayloadForwardGasAmount
+                        .storeMaybeRef(null) // dexCustomPayload
+                        .storeCoins(0) // refundForwardGasAmount
+                        .storeMaybeRef(null) // refundPayload
+                        .storeUint(10, 16) // referralValue (10 BPS)
+                        .storeAddress(null) // referralAddress
+                        .endCell()
+                )
+                .endCell();
+        } else {
+            forwardPayload = beginCell()
+                .storeUint(opCode, 32)
+                .storeAddress(askJetton)           // target jetton wallet
+                .storeCoins(BigInt(minAskUnits))   // min_out
+                .storeAddress(userAddress)         // to_address
+                .storeUint(1, 1)                   // has_ref_address
+                .storeAddress(userAddress)         // ref_address (referral)
+                .endCell();
+        }
 
         console.log(`[SwapService] Jetton->Jetton swap (${isV2 ? 'V2' : 'V1'}):`, {
             router: routerAddress,
