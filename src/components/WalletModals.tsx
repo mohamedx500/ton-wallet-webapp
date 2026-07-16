@@ -52,7 +52,7 @@ interface SelectWalletTypeModalProps {
 
 // CoinGecko ID mapping for price charts
 const COINGECKO_IDS: Record<string, string> = {
-    'TON': 'the-open-network',
+    'Gram': 'the-open-network',
     'USDT': 'tether',
     'USDC': 'usd-coin',
     'BTC': 'bitcoin',
@@ -326,7 +326,7 @@ export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMo
     // Include: regular transfers, swaps involving this token (either from or to), deposits, and withdrawals
     const tokenTxs = transactions.filter(tx => {
         // Regular token transfers (sent/received)
-        if (tx.token === token.symbol || (token.symbol === 'TON' && !tx.token)) {
+        if (tx.token === token.symbol || (token.symbol === 'Gram' && !tx.token)) {
             return true;
         }
 
@@ -598,9 +598,9 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
     const handleBack = () => setStep(prev => prev - 1);
 
     // Default to TON if nothing selected, get the actual TON balance from tokens
-    const tonToken = tokens.find(t => t.symbol === 'TON');
+    const tonToken = tokens.find(t => t.symbol === 'Gram');
     const currentAsset = selectedAsset || {
-        symbol: 'TON',
+        symbol: 'Gram',
         icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png',
         balance: tonToken?.balance || '0.00',
         price: tonToken?.price || 0
@@ -688,7 +688,7 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
                                         </div>
                                         <span className="font-semibold text-sm">TON</span>
                                     </button>
-                                    {tokens.map((t, i) => t.symbol !== 'TON' && (
+                                    {tokens.map((t, i) => t.symbol !== 'Gram' && (
                                         <button
                                             key={i}
                                             onClick={() => setSelectedAsset(t)}
@@ -991,7 +991,7 @@ interface SwapModalProps extends BaseModalProps {
 }
 
 export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, tokens, onSwapInitiated }: SwapModalProps) {
-    const [fromToken, setFromToken] = useState('TON');
+    const [fromToken, setFromToken] = useState('Gram');
     const [toToken, setToToken] = useState('USDT');
     const [amount, setAmount] = useState('');
     const [selectedDex, setSelectedDex] = useState<'stonfi' | 'dedust'>('stonfi');
@@ -1060,7 +1060,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                 console.error('[SwapModal] Failed to load tokens:', response.status);
                 // Fallback to minimal list if API fails
                 setAvailableTokens([
-                    { symbol: 'TON', name: 'Toncoin', icon: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc', decimals: 9, address: 'native' },
+                    { symbol: 'Gram', name: 'Toncoin', icon: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc', decimals: 9, address: 'native' },
                     { symbol: 'USD₮', name: 'Tether USD', icon: 'https://asset.ston.fi/img/EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs/1a87edfee9a28b05578853952e5effb8cc30af1e0fb90043aa2ce19dce490849', decimals: 6, address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs' },
                 ]);
             }
@@ -1068,7 +1068,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
             console.error('[SwapModal] Error loading tokens:', error);
             // Fallback to minimal list if API fails
             setAvailableTokens([
-                { symbol: 'TON', name: 'Toncoin', icon: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc', decimals: 9, address: 'native' },
+                { symbol: 'Gram', name: 'Toncoin', icon: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc', decimals: 9, address: 'native' },
                 { symbol: 'USD₮', name: 'Tether USD', icon: 'https://asset.ston.fi/img/EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs/1a87edfee9a28b05578853952e5effb8cc30af1e0fb90043aa2ce19dce490849', decimals: 6, address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs' },
             ]);
         } finally {
@@ -1253,10 +1253,10 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
 
         // Calculate fee based on swap direction
         let fee = 0;
-        if (fromToken === 'TON') {
+        if (fromToken === 'Gram') {
             // TON -> Jetton swap: need to reserve gas (0.25 TON) + small buffer (0.05)
             fee = 0.30; // Conservative estimate: 0.25 for swap + 0.05 buffer
-        } else if (toToken === 'TON') {
+        } else if (toToken === 'Gram') {
             // Jetton -> TON swap: gas is paid from balance after swap, so can use full jetton balance
             fee = 0;
         } else {

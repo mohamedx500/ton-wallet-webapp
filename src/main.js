@@ -388,7 +388,7 @@ function renderTransactions(filter = 'all') {
                 <span class="tx-amount ${tx.type === 'received' ? 'incoming' : 'outgoing'}">
                     ${tx.type === 'received' ? '+' : '-'}${formatAmount(tx.amount)}
                 </span>
-                <span class="tx-currency">${tx.currency || 'TON'}</span>
+                <span class="tx-currency">${tx.currency || 'Gram'}</span>
                 <span class="tx-status">Completed</span>
             </div>
             <div class="tx-right">
@@ -433,7 +433,7 @@ async function sendTransaction() {
     try {
         showLoading('Sending...');
 
-        if (token === 'TON') {
+        if (token === 'Gram') {
             await walletService.sendTransaction(
                 state.mnemonic,
                 state.walletType,

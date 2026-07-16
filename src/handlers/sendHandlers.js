@@ -60,7 +60,7 @@ export async function handleSendTransaction() {
     const recipient = recipientAddress?.value.trim();
     const amount = parseFloat(sendAmount?.value);
     const comment = sendComment?.value.trim() || '';
-    const selectedToken = tokenSelect?.value || 'TON';
+    const selectedToken = tokenSelect?.value || 'Gram';
     const selectedOption = tokenSelect?.selectedOptions[0];
 
     // Validation
@@ -75,7 +75,7 @@ export async function handleSendTransaction() {
     }
 
     // Check balance based on selected token
-    if (selectedToken === 'TON') {
+    if (selectedToken === 'Gram') {
         if (amount * 1e9 > state.balance) {
             showToast('Insufficient TON balance', 'error', toastContainer);
             return;
@@ -96,7 +96,7 @@ export async function handleSendTransaction() {
         amount,
         comment,
         token: selectedToken,
-        tokenSymbol: selectedOption?.dataset.symbol || 'TON',
+        tokenSymbol: selectedOption?.dataset.symbol || 'Gram',
         tokenDecimals: parseInt(selectedOption?.dataset.decimals) || 9
     };
 
@@ -145,7 +145,7 @@ export async function executeSendTransaction(password) {
         });
 
         // Execute transaction (currently only TON supported)
-        if (pendingTransaction.token === 'TON') {
+        if (pendingTransaction.token === 'Gram') {
             const result = await walletService.sendTransaction(
                 state.mnemonic,
                 state.settings.walletType,
@@ -238,11 +238,11 @@ export function handleMaxAmount() {
     const sendAmount = document.getElementById('sendAmount');
     const tokenSelect = document.getElementById('sendTokenSelect');
     const selectedOption = tokenSelect?.selectedOptions[0];
-    const selectedToken = tokenSelect?.value || 'TON';
+    const selectedToken = tokenSelect?.value || 'Gram';
 
     let maxAmount = 0;
 
-    if (selectedToken === 'TON') {
+    if (selectedToken === 'Gram') {
         // Leave 0.01 TON for fees
         maxAmount = Math.max(0, (state.balance / 1e9) - 0.01);
     } else {

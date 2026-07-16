@@ -111,7 +111,7 @@ export interface SwapTransaction {
  */
 export const TON_TOKENS: Record<string, TokenInfo> = {
     TON: {
-        symbol: 'TON',
+        symbol: 'Gram',
         name: 'Toncoin',
         address: 'native',
         decimals: 9,
@@ -336,7 +336,7 @@ export class SwapService {
     /**
      * Get the best quote by querying both STON.fi and DeDust in parallel
      * 
-     * @param fromSymbol - Source token symbol (e.g., 'TON', 'USDT')
+     * @param fromSymbol - Source token symbol (e.g., 'Gram', 'USDT')
      * @param toSymbol - Target token symbol
      * @param amount - Amount to swap in human-readable format (e.g., '0.1')
      * @returns Best quote result with comparison data
@@ -793,6 +793,7 @@ export class SwapService {
             return this.buildStonfiJettonToTonSwap(
                 senderAddress,
                 fromToken.address,
+                askJettonWallet,
                 amountUnits,
                 minOutputUnits
             );
@@ -894,17 +895,19 @@ export class SwapService {
     private buildStonfiJettonToTonSwap(
         senderAddress: string,
         offerJettonAddress: string,
+        askJettonAddress: string,
         offerUnits: string,
         minAskUnits: string
     ): SwapTransaction {
         // Parse addresses
         const userAddress = Address.parse(senderAddress);
+        const askJetton = Address.parse(askJettonAddress);
 
         // Build V1 swap forward payload for Jetton -> TON
         // V1 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr)
         const forwardPayload = beginCell()
             .storeUint(STONFI_SWAP_OP, 32)     // V1 swap operation code
-            .storeAddress(Address.parse(PTON_V1_MASTER)) // pTON master (we want TON back)
+            .storeAddress(askJetton) // pTON wallet for router (we want TON back)
             .storeCoins(BigInt(minAskUnits))   // min_out - minimum TON to receive
             .storeAddress(userAddress)         // to_address - where to send TON
             .storeUint(1, 1)                   // has_ref_address

@@ -34,7 +34,7 @@ export interface CoinInfo {
 
 /** The default native TON coin */
 export const NATIVE_TON: CoinInfo = {
-    symbol: 'TON',
+    symbol: 'Gram',
     name: 'Toncoin',
     masterAddress: null,
     decimals: 9,

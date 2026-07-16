@@ -45,7 +45,7 @@ const MultiSendFooter: React.FC<MultiSendFooterProps> = ({ onSend }) => {
 
     // 3. Find matching token in user wallet for balance check
     const walletToken = tokens.find(t =>
-        (firstRowCoin?.isNative && t.symbol === 'TON') ||
+        (firstRowCoin?.isNative && t.symbol === 'Gram') ||
         (!firstRowCoin?.isNative && t.masterAddress === firstRowCoin?.masterAddress)
     );
     const userBalance = walletToken ? parseFloat(walletToken.rawBalance || walletToken.balance || '0') : 0;
@@ -104,7 +104,7 @@ const MultiSendFooter: React.FC<MultiSendFooterProps> = ({ onSend }) => {
                     {isInsufficientBalance && rows.length > 0 && (
                         <div className="text-center w-full pb-1">
                             <span className="text-[12px] text-red-500 dark:text-red-400 font-bold bg-red-500/10 px-3 py-1 rounded-full">
-                                Insufficient {firstRowCoin?.symbol || 'TON'} balance!
+                                Insufficient {firstRowCoin?.symbol || 'Gram'} balance!
                             </span>
                         </div>
                     )}

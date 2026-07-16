@@ -70,7 +70,7 @@ export const KNOWN_TOKENS: Record<string, TokenConfig> = {
     // ============================================================================
 
     'native': {
-        symbol: 'TON',
+        symbol: 'Gram',
         name: 'Toncoin',
         decimals: 9,
         masterAddress: 'native',
@@ -85,7 +85,7 @@ export const KNOWN_TOKENS_BY_SYMBOL: Record<string, TokenConfig> = {
     'USDC': KNOWN_TOKENS['EQB-MPwrd1G6WKNkLz_VnV6WqBDd142KMQv-g1O-8QUA3728'],
     'DOGS': KNOWN_TOKENS['EQDvRFMYLdxmvY3Tk-cfWMLqDnXF_EclO2Fp4wwj33WhlNFT'],
     'NOT': KNOWN_TOKENS['EQAvlWFDxGF2lXm67y4yzC17wYKD9A0guwPkMs1gOsM__NOT'],
-    'TON': KNOWN_TOKENS['native'],
+    'Gram': KNOWN_TOKENS['native'],
 };
 
 /**

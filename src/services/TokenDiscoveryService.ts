@@ -31,7 +31,7 @@ const FALLBACK_ICON = 'https://raw.githubusercontent.com/trustwallet/assets/mast
 // Popular tokens cache from STON.fi for quick swap access
 const POPULAR_TOKENS_CACHE: TokenMetadata[] = [
     {
-        symbol: 'TON',
+        symbol: 'Gram',
         name: 'Toncoin',
         decimals: 9,
         imageUrl: 'https://asset.ston.fi/img/EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c/d6004ba1bb042d9224b37dacf17399d04ff64d4ae5a6a1fbc52ae3906545c2fc',
@@ -82,7 +82,7 @@ class TokenDiscoveryService {
             // Add native TON balance first
             const tonBalance = await this.getTonBalance(walletAddress);
             tokens.push({
-                symbol: 'TON',
+                symbol: 'Gram',
                 name: 'Toncoin',
                 balance: tonBalance.raw,
                 balanceFormatted: tonBalance.formatted,

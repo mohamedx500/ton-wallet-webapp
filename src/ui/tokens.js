@@ -8,7 +8,7 @@ import { openModal } from './screens.js';
 
 // Token icons mapping
 const TOKEN_ICONS = {
-    'TON': '💎',
+    'Gram': '💎',
     'USDT': '💵',
     'USDC': '💵',
     'NOT': '🔔',
@@ -18,7 +18,7 @@ const TOKEN_ICONS = {
 
 // Token colors for backgrounds
 const TOKEN_CLASSES = {
-    'TON': 'ton',
+    'Gram': 'Gram',
     'USDT': 'usdt',
     'USDC': 'usdt',
     'NOT': 'not',
@@ -72,7 +72,7 @@ export function renderJettonTokens(jettons) {
 
     // Make TON token clickable
     if (tonToken) {
-        tonToken.onclick = () => showTokenDetail('TON');
+        tonToken.onclick = () => showTokenDetail('Gram');
     }
 
     if (!jettons || jettons.length === 0) return;
@@ -138,7 +138,7 @@ export async function showTokenDetail(symbol, jettonData = null) {
     let usdValue = 0;
     let currentPrice = 0;
 
-    if (symbol === 'TON') {
+    if (symbol === 'Gram') {
         name = 'Toncoin';
         balance = state.balance / 1e9;
         currentPrice = state.usdRate || 0;
@@ -188,8 +188,8 @@ function renderTokenTransactions(symbol) {
 
     // Filter transactions by token
     const filteredTx = (state.transactions || []).filter(tx => {
-        if (symbol === 'TON') {
-            return !tx.jetton || tx.jetton === 'TON';
+        if (symbol === 'Gram') {
+            return !tx.jetton || tx.jetton === 'Gram';
         }
         return tx.jetton === symbol;
     });
@@ -209,8 +209,8 @@ function renderTokenTransactions(symbol) {
         const address = isIncoming ? tx.from : tx.to;
         const shortAddr = address.length > 16 ? `${address.slice(0, 6)}...${address.slice(-6)}` : address;
 
-        const isJetton = tx.jetton && tx.jetton !== 'TON';
-        const currency = isJetton ? tx.jetton : 'TON';
+        const isJetton = tx.jetton && tx.jetton !== 'Gram';
+        const currency = isJetton ? tx.jetton : 'Gram';
         const decimals = tx.decimals || 9;
         const amount = isJetton
             ? (tx.amount / Math.pow(10, decimals)).toFixed(4)
@@ -239,7 +239,7 @@ async function fetchTokenPrice(symbol) {
     try {
         let coinId = null;
 
-        if (symbol === 'TON') {
+        if (symbol === 'Gram') {
             coinId = 'the-open-network';
         } else if (symbol === 'NOT') {
             coinId = 'notcoin';
@@ -273,7 +273,7 @@ async function fetchTokenPrice(symbol) {
 
             // Update balance USD value
             const state = getState();
-            if (symbol === 'TON' && state.balance) {
+            if (symbol === 'Gram' && state.balance) {
                 const usdValue = (state.balance / 1e9) * price;
                 document.getElementById('tokenDetailUsd').textContent = `$${usdValue.toFixed(2)}`;
             }

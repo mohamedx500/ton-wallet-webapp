@@ -70,7 +70,7 @@ export class TransactionTracker {
             type: tx.type || 'transfer',
             amount: tx.amount,
             recipient: tx.recipient,
-            tokenSymbol: tx.tokenSymbol || 'TON',
+            tokenSymbol: tx.tokenSymbol || 'Gram',
             status: TransactionStatus.PENDING,
             createdAt: Date.now(),
             updatedAt: Date.now(),

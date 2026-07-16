@@ -143,8 +143,8 @@ function renderTxItem(tx, index) {
     const comment = tx.comment ? `<div class="tx-comment">${escapeHtml(tx.comment)}</div>` : '';
 
     // Determine currency and format amount
-    const isJetton = tx.jetton && tx.jetton !== 'TON';
-    const currency = isJetton ? tx.jetton : 'TON';
+    const isJetton = tx.jetton && tx.jetton !== 'Gram';
+    const currency = isJetton ? tx.jetton : 'Gram';
     const decimals = tx.decimals || 9;
     const amount = isJetton
         ? (tx.amount / Math.pow(10, decimals)).toFixed(4)

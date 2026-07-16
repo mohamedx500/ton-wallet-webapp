@@ -61,7 +61,7 @@ export function useWalletCoins(): CoinInfo[] {
     return useMemo(() => {
         const coins: CoinInfo[] = [];
         // Only include native TON if user has a balance
-        const tonToken = tokens.find(t => normalizeSymbol(t.symbol) === 'TON');
+        const tonToken = tokens.find(t => normalizeSymbol(t.symbol) === 'Gram');
         const tonBal = parseFloat(tonToken?.rawBalance ?? tonToken?.balance ?? '0');
         if (tonBal > 0) {
             coins.push({
@@ -73,7 +73,7 @@ export function useWalletCoins(): CoinInfo[] {
         for (const token of tokens) {
             const sym = normalizeSymbol(token.symbol);
             // Skip TON (already added)
-            if (sym === 'TON') continue;
+            if (sym === 'Gram') continue;
             // Only include tokens with a balance > 0
             const rawBal = parseFloat(token.rawBalance ?? token.balance ?? '0');
             if (rawBal <= 0) continue;

@@ -328,7 +328,7 @@ export class TonApiService {
                         timestamp: event.timestamp,
                         comment: transfer.comment || '',
                         status: status,
-                        token: 'TON'
+                        token: 'Gram'
                     });
                 }
 
@@ -370,13 +370,13 @@ export class TonApiService {
                     // Jetton uses: amount_in, amount_out with jetton_master_in/out
 
                     // Determine input token and amount
-                    let inToken = 'TON';
+                    let inToken = 'Gram';
                     let inAmount = 0;
                     let inDecimals = 9;
 
                     if (swap.ton_in) {
                         // TON is the input
-                        inToken = 'TON';
+                        inToken = 'Gram';
                         inAmount = Number(swap.ton_in) || 0;
                         inDecimals = 9;
                     } else if (swap.amount_in) {
@@ -387,12 +387,12 @@ export class TonApiService {
                     }
 
                     // Determine output token
-                    let outToken = 'TON';
+                    let outToken = 'Gram';
                     let outAmount = 0;
                     let outDecimals = 9;
 
                     if (swap.ton_out) {
-                        outToken = 'TON';
+                        outToken = 'Gram';
                         outAmount = Number(swap.ton_out) || 0;
                         outDecimals = 9;
                     } else if (swap.amount_out) {

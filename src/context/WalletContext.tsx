@@ -117,7 +117,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
             // Send
             let res;
-            if (token && token.symbol !== 'TON') {
+            if (token && token.symbol !== 'Gram') {
                 if (!token.walletAddress) throw new Error(`Missing wallet address for ${token.symbol}`);
 
                 console.log(`Sending Jetton ${token.symbol} (${token.walletAddress}) -> ${recipient}`);
@@ -201,7 +201,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             // Add TON
             tokenList.push({
                 name: 'Toncoin',
-                symbol: 'TON',
+                symbol: 'Gram',
                 balance: balTon.toFixed(2),
                 value: `$${(balTon * tonPrice).toFixed(2)}`,
                 icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png',
@@ -321,7 +321,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                     ...tx,
                     type,
                     amount: formattedAmount,
-                    token: tx.token || (tx.jetton || 'TON'),
+                    token: tx.token || (tx.jetton || 'Gram'),
                     time: timeString,
                     from: type === 'received' ? tx.from : tx.to, // Display logic remains similar
                     to: type === 'sent' ? tx.to : tx.from,

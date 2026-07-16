@@ -22,8 +22,8 @@ const PRIVATE_KEY = import.meta.env.VITE_CHANGELLY_PRIVATE_KEY || '';
 
 // Supported currencies for the wallet
 const SUPPORTED_CURRENCIES = {
-    TON: { id: 'ton', name: 'Toncoin', network: 'ton' },
-    USDT: { id: 'usdtton', name: 'Tether (TON)', network: 'ton' },
+    TON: { id: 'Gram', name: 'Toncoin', network: 'Gram' },
+    USDT: { id: 'usdtton', name: 'Tether (TON)', network: 'Gram' },
     BTC: { id: 'btc', name: 'Bitcoin', network: 'btc' },
     ETH: { id: 'eth', name: 'Ethereum', network: 'eth' },
 };
@@ -41,12 +41,12 @@ export class ChangellyService {
      * Opens Changelly's hosted payment page
      * 
      * @param {string} walletAddress - Destination wallet address
-     * @param {string} cryptoCurrency - Target crypto (e.g., 'ton')
+     * @param {string} cryptoCurrency - Target crypto (e.g., 'Gram')
      * @param {string} fiatCurrency - Source fiat (e.g., 'usd')
      * @param {number} amount - Amount in fiat
      * @returns {string} - URL to redirect user to
      */
-    getBuyUrl(walletAddress, cryptoCurrency = 'ton', fiatCurrency = 'usd', amount = 50) {
+    getBuyUrl(walletAddress, cryptoCurrency = 'Gram', fiatCurrency = 'usd', amount = 50) {
         const params = new URLSearchParams({
             from: fiatCurrency.toLowerCase(),
             to: cryptoCurrency.toLowerCase(),
@@ -68,7 +68,7 @@ export class ChangellyService {
      * @param {number} amount - Amount to exchange
      * @returns {string} - Widget URL
      */
-    getWidgetUrl(walletAddress, fromCurrency = 'btc', toCurrency = 'ton', amount = 0.01) {
+    getWidgetUrl(walletAddress, fromCurrency = 'btc', toCurrency = 'Gram', amount = 0.01) {
         const params = new URLSearchParams({
             from: fromCurrency.toLowerCase(),
             to: toCurrency.toLowerCase(),
@@ -89,7 +89,7 @@ export class ChangellyService {
      * @param {number} amount - Amount in fiat
      */
     openBuyTon(walletAddress, fiatCurrency = 'usd', amount = 50) {
-        const url = this.getBuyUrl(walletAddress, 'ton', fiatCurrency, amount);
+        const url = this.getBuyUrl(walletAddress, 'Gram', fiatCurrency, amount);
         window.open(url, '_blank', 'noopener,noreferrer');
     }
 
@@ -172,7 +172,7 @@ export class ChangellyService {
      */
     getSupportedCurrencies() {
         return [
-            { symbol: 'TON', name: 'Toncoin', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png' },
+            { symbol: 'Gram', name: 'Toncoin', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png' },
             { symbol: 'USDT', name: 'Tether', icon: 'https://tether.to/images/logoCircle.png' },
             { symbol: 'BTC', name: 'Bitcoin', icon: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png' },
             { symbol: 'ETH', name: 'Ethereum', icon: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png' },

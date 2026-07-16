@@ -190,7 +190,7 @@ export function updateSelectedTokenBalance(state) {
     const selectedOption = tokenSelect.selectedOptions[0];
     const value = tokenSelect.value;
 
-    if (value === 'TON') {
+    if (value === 'Gram') {
         const tonAmount = formatTON(state.balance);
         availableBalance.textContent = `${tonAmount} TON`;
     } else {
