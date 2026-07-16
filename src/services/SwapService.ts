@@ -833,7 +833,6 @@ export class SwapService {
      * @param askJettonAddress - Pool's jetton wallet address (from API ask_jetton_wallet)
      * @param offerUnits - Amount of TON to swap (in nanoTON)
      * @param minAskUnits - Minimum amount of output tokens (slippage protection)
-     * @param ptonWalletAddress - Pool's pTON wallet address from API (offer_jetton_wallet)
      */
     private buildStonfiTonToJettonSwap(
         senderAddress: string,
@@ -849,50 +848,48 @@ export class SwapService {
         const isV2 = rawData?.router?.major_version === 2;
         const routerAddress = rawData?.router?.address || STONFI_ROUTER_V1;
         
-        // STON.fi pTON Wallet
-        const ptonWallet = isV2 
-            ? (rawData?.router?.pton_master_address || 'EQCM3B12QK1e4y_S8PRLyIyCKEZ5xBWJSCRXtyprNCvI6eE_') 
-            : 'EQARULUYsmJq1RiZ-YiH-IJLcAZUVkVff-KBPwEmmaQGH6aC';
-
-        console.log(`[SwapService] Building STON.fi ${isV2 ? 'V2' : 'V1'} TON->Jetton swap:`, {
-            ptonWallet,
-            askJettonWallet: askJettonAddress,
-            userAddress: senderAddress,
-            routerAddress
-        });
+        // STON.fi pTON proxy master address
+        const proxyTonAddress = rawData?.router?.pton_master_address || 
+            (isV2 ? 'EQBnGWMCf3-FZZq1W4IWcWiGAc3PHuZ0_H-7sad2oY00o83S' : 'EQCM3B12QK1e4yZSf8GtBRT0aLMNyEsBc_DhVfRRtOEffLez');
 
         const opCode = isV2 ? 0x6664de2a : STONFI_SWAP_OP; // V2 SWAP vs V1 SWAP
 
-        // Build STON.fi swap payload
-        // V1/V2 format: op_code (32) | token_wallet (addr) | min_out (coins) | to_address (addr) | referral...
-        const swapPayload = beginCell()
+        // Build STON.fi swap payload (forward_payload)
+        const forwardPayload = beginCell()
             .storeUint(opCode, 32)
-            .storeAddress(askJettonWallet)     // TOKEN_WALLET: Must be the POOL'S jetton wallet (from API)
+            .storeAddress(askJettonWallet)     // TOKEN_WALLET
             .storeCoins(BigInt(minAskUnits))   // min_out
             .storeAddress(userAddress)         // to_address - receiving address
             .storeUint(1, 1)                   // has_ref_address
             .storeAddress(userAddress)         // ref_address (referral/refund)
             .endCell();
 
-        // Calculate total value: swap amount + gas fee
-        // V1 requires ~0.25 TON for safe execution
+        // Calculate total value
         const swapAmount = BigInt(offerUnits);
-        const gasFee = GAS_FEES.STONFI_TON_TO_JETTON;
-        const totalValue = swapAmount + gasFee;
+        const forwardGas = toNano('0.25'); // Gas for routing
+        
+        // Wrap in pTON ton_transfer payload
+        const proxyPayload = beginCell()
+            .storeUint(0x01f3835d, 32) // ton_transfer opcode
+            .storeUint(0, 64) // query_id
+            .storeCoins(swapAmount) // ton_amount to swap
+            .storeAddress(Address.parse(routerAddress)) // refund to router
+            .storeAddress(userAddress) // refund address
+            .storeBit(0) // custom_payload
+            .storeCoins(forwardGas) // forward_ton_amount
+            .storeBit(1) // Either Cell ^Cell (1 = ref)
+            .storeRef(forwardPayload) // forward_payload
+            .endCell();
 
-        console.log('[SwapService] STON.fi V1 Swap Built:', {
-            swapAmount: swapAmount.toString(),
-            gasFee: gasFee.toString(),
-            totalValue: totalValue.toString(),
-            expectedTotalTON: Number(totalValue) / 1e9,
-        });
+        const gasFee = toNano('0.3'); // Buffer gas for the root transaction
+        const totalValue = swapAmount + gasFee;
 
         return {
             type: 'ton_transfer',
-            to: ptonWallet,
+            to: proxyTonAddress,
             value: totalValue.toString(),
-            body: swapPayload,
-            mode: 3, // PAY_GAS_SEPARATELY + IGNORE_ERRORS
+            body: proxyPayload,
+            mode: 3
         };
     }
 
@@ -945,7 +942,7 @@ export class SwapService {
             jettonMaster: offerJettonAddress,
             destination: routerAddress,
             amount: offerUnits,
-            forwardAmount: toNano('0.2').toString(), // Gas for forward message
+            forwardAmount: toNano('0.25').toString(), // Gas for forward message (increased to 0.25 to meet 0.24 API requirement)
             forwardPayload: forwardPayload.toBoc().toString('base64'),
             gasAmount: toNano('0.3').toString(), // Total gas for jetton transfer + swap
         };

@@ -277,12 +277,15 @@ export default function TonWallet() {
                     const walletService = new WalletService();
 
                     // Send transaction with the swap payload (Cell body)
+                    const { Cell } = await import('@ton/ton');
+                    const bodyCell = typeof swapTx.body === 'string' ? Cell.fromBase64(swapTx.body) : swapTx.body;
+                    
                     await walletService.sendTransactionWithPayload(
                         mnemonic,
                         walletType,
                         swapTx.to,
                         amountInTon,
-                        swapTx.body, // The swap payload Cell - THIS IS CRITICAL!
+                        bodyCell, // The swap payload Cell - THIS IS CRITICAL!
                         false // mainnet
                     );
 
