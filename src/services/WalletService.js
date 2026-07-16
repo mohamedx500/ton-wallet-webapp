@@ -31,6 +31,7 @@ import { getStrictDecimals, isStablecoin } from '../config/knownTokens.ts';
 
 let HIGHLOAD_V3_CODE = null;
 let WALLET_V5_CODE = null;
+const STANDARD_V4R2_WALLET_ID = 698983191;
 
 /**
  * Get Highload Wallet V3 contract code (lazy-loaded)
@@ -323,6 +324,7 @@ export class WalletService {
                     wallet = WalletContractV4.create({
                         publicKey: keyPair.publicKey,
                         workchain: 0,
+                        walletId: STANDARD_V4R2_WALLET_ID,
                     });
                     address = wallet.address.toString({ bounceable: false, testOnly: testnet });
                     break;
@@ -383,6 +385,7 @@ export class WalletService {
                     wallet = WalletContractV4.create({
                         publicKey: keyPair.publicKey,
                         workchain: 0,
+                        walletId: STANDARD_V4R2_WALLET_ID,
                     });
                     address = wallet.address.toString({ bounceable: false, testOnly: testnet });
                     break;
@@ -437,6 +440,7 @@ export class WalletService {
                 wallet = client.open(WalletContractV4.create({
                     publicKey: keyPair.publicKey,
                     workchain: 0,
+                    walletId: STANDARD_V4R2_WALLET_ID,
                 }));
                 break;
 
@@ -448,6 +452,7 @@ export class WalletService {
                 wallet = client.open(WalletContractV4.create({
                     publicKey: keyPair.publicKey,
                     workchain: 0,
+                    walletId: STANDARD_V4R2_WALLET_ID,
                 }));
                 break;
         }
@@ -520,6 +525,7 @@ export class WalletService {
                 wallet = client.open(WalletContractV4.create({
                     publicKey: keyPair.publicKey,
                     workchain: 0,
+                    walletId: STANDARD_V4R2_WALLET_ID,
                 }));
                 break;
 
@@ -531,6 +537,7 @@ export class WalletService {
                 wallet = client.open(WalletContractV4.create({
                     publicKey: keyPair.publicKey,
                     workchain: 0,
+                    walletId: STANDARD_V4R2_WALLET_ID,
                 }));
                 break;
         }
@@ -773,7 +780,7 @@ export class WalletService {
                 senderAddress = WalletContractV3R2.create({ publicKey: keyPair.publicKey, workchain: 0 }).address;
                 break;
             case 'v4r2':
-                senderAddress = WalletContractV4.create({ publicKey: keyPair.publicKey, workchain: 0 }).address;
+                senderAddress = WalletContractV4.create({ publicKey: keyPair.publicKey, workchain: 0, walletId: STANDARD_V4R2_WALLET_ID }).address;
                 break;
             case 'v5r1':
                 senderAddress = WalletContractV5R1.create({ publicKey: keyPair.publicKey, workchain: 0 }).address;
@@ -787,7 +794,7 @@ export class WalletService {
                 ).address;
                 break;
             default:
-                senderAddress = WalletContractV4.create({ publicKey: keyPair.publicKey, workchain: 0 }).address;
+                senderAddress = WalletContractV4.create({ publicKey: keyPair.publicKey, workchain: 0, walletId: STANDARD_V4R2_WALLET_ID }).address;
         }
 
         // ============================================================================
@@ -865,6 +872,7 @@ export class WalletService {
                 wallet = client.open(WalletContractV4.create({
                     publicKey: keyPair.publicKey,
                     workchain: 0,
+                    walletId: STANDARD_V4R2_WALLET_ID,
                 }));
                 break;
 
@@ -884,6 +892,7 @@ export class WalletService {
                 wallet = client.open(WalletContractV4.create({
                     publicKey: keyPair.publicKey,
                     workchain: 0,
+                    walletId: STANDARD_V4R2_WALLET_ID,
                 }));
                 break;
         }

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Wallet, ShieldCheck, Eye, EyeOff, Copy, Check, Loader2, ChevronLeft, Download, Plus, Lock } from 'lucide-react';
 import { useWallet } from '../context/WalletContext';
-import { mnemonicNew } from '@ton/crypto';
+import { mnemonicNew, mnemonicValidate } from '@ton/crypto';
 import { cn } from '../lib/utils';
 import NetworkBanner from './NetworkBanner';
+import ConfirmDialog from './ConfirmDialog';
 
 interface LoginScreenProps {
     darkMode: boolean;
@@ -45,6 +46,7 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
     const [importText, setImportText] = useState('');
     const [copied, setCopied] = useState(false);
     const [isImportFlow, setIsImportFlow] = useState(false);
+    const [showResetConfirm, setShowResetConfirm] = useState(false);
 
     useEffect(() => {
         if (hasPassword) {
@@ -78,16 +80,32 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
     };
 
     const handleMnemonicInput = () => {
-        const words = importText.trim().split(/\s+/);
+        const words = importText
+            .trim()
+            .split(/\s+/)
+            .map((word) =>
+                word
+                    .normalize('NFKD')
+                    .toLowerCase()
+                    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                    .trim()
+            )
+            .filter(Boolean);
         if (words.length !== 24) {
             setError(`Expected 24 words, got ${words.length}`);
             return;
         }
-        setMnemonicWords(words);
-        setPassword('');
-        setConfirmPassword('');
-        setError('');
-        setView('password_setup');
+        mnemonicValidate(words).then((isValid) => {
+            if (!isValid) {
+                setError('Invalid mnemonic phrase');
+                return;
+            }
+            setMnemonicWords(words);
+            setPassword('');
+            setConfirmPassword('');
+            setError('');
+            setView('password_setup');
+        });
     };
 
     const handlePasswordSetup = async (e?: React.FormEvent) => {
@@ -169,17 +187,27 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
                 </form>
                 <div className={cn("mt-6 pt-6 text-center", darkMode ? "border-t border-white/5" : "border-t border-gray-200/60")}>
                     <button
-                        onClick={() => {
-                            if (window.confirm('Are you sure you want to reset your wallet? This will delete your local data. Make sure you have your seed phrase backed up!')) {
-                                resetWallet();
-                                setView('initial');
-                            }
-                        }}
-                        className="text-xs text-red-400 hover:text-red-500 font-medium transition-colors"
+                        onClick={() => setShowResetConfirm(true)}
+                        className={cn("text-xs font-medium transition-colors", darkMode ? "text-gray-600 hover:text-gray-400" : "text-gray-400 hover:text-gray-600")}
                     >
                         Reset / Forgot Password
                     </button>
                 </div>
+                <ConfirmDialog
+                    isOpen={showResetConfirm}
+                    title="Reset Wallet"
+                    message="This will delete your local data. Make sure you have your seed phrase backed up!"
+                    confirmLabel="Reset"
+                    cancelLabel="Cancel"
+                    variant="danger"
+                    onConfirm={() => {
+                        setShowResetConfirm(false);
+                        resetWallet();
+                        setView('initial');
+                    }}
+                    onCancel={() => setShowResetConfirm(false)}
+                    darkMode={darkMode}
+                />
             </Shell>
         );
     }
@@ -254,6 +282,17 @@ export default function LoginScreen({ darkMode }: LoginScreenProps) {
                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                     </div>
+                    {password.length > 0 && (
+                        <div className="flex gap-1.5 px-1">
+                            {[0, 1, 2, 3].map(i => {
+                                const strength = password.length >= 12 ? 4 : password.length >= 8 ? 3 : password.length >= 6 ? 2 : password.length >= 4 ? 1 : 0;
+                                const colors = ['bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-emerald-500'];
+                                return (
+                                    <div key={i} className={cn("h-1 flex-1 rounded-full transition-all duration-300", i < strength ? colors[strength - 1] : darkMode ? "bg-white/10" : "bg-gray-200")} />
+                                );
+                            })}
+                        </div>
+                    )}
                     <div>
                         <input
                             type={showPassword ? 'text' : 'password'}

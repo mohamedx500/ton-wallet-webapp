@@ -133,10 +133,15 @@ export default function ActivityTab({ darkMode, language, activityFilter, setAct
             {filtered.length > 0 ? (
                 <div className="space-y-4">
                     {dateGroups.map((group, gi) => (
-                        <div key={gi}>
+                        <motion.div
+                            key={gi}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.25, delay: gi * 0.06, ease: 'easeOut' }}
+                        >
                             {/* Date Header */}
                             <div className="flex items-center gap-3 mb-2 px-1">
-                                <h4 className={cn("text-base font-bold uppercase tracking-wider flex-shrink-0", darkMode ? "text-gray-300" : "text-black")}>
+                                <h4 className={cn("text-[11px] font-bold uppercase tracking-wider flex-shrink-0", darkMode ? "text-gray-500" : "text-gray-400")}>
                                     {group.label}
                                 </h4>
                                 <div className={cn("h-px flex-1", darkMode ? "bg-white/[0.06]" : "bg-gray-200/80")} />
@@ -207,7 +212,7 @@ export default function ActivityTab({ darkMode, language, activityFilter, setAct
                                     );
                                 })}
                             </div>
-                        </div>
+                        </motion.div>
                     ))}
                 </div>
             ) : (

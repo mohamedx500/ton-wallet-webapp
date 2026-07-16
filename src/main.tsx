@@ -6,6 +6,7 @@ import './index.css';
 import { WalletProvider } from './context/WalletContext';
 import { NetworkProvider } from './context/NetworkContext';
 import { MultiSendProvider } from './context/MultiSendContext';
+import { ToastProvider } from './components/Toast';
 import { initDevToolsGuard } from './utils/devtoolsGuard';
 
 // Activate production DevTools protections (no-op in dev mode)
@@ -16,7 +17,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <NetworkProvider>
             <WalletProvider>
                 <MultiSendProvider>
-                    <App />
+                    <ToastProvider>
+                        <App />
+                    </ToastProvider>
                 </MultiSendProvider>
             </WalletProvider>
         </NetworkProvider>

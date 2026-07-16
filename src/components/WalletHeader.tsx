@@ -1,5 +1,6 @@
 import React from 'react';
 import { Copy, Check, ChevronDown } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
 interface WalletHeaderProps {
@@ -31,13 +32,24 @@ export default function WalletHeader({
             </div>
 
             {activeTab === 'home' && (
-                <div className="text-center">
+                <motion.div
+                    className="text-center"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                >
                     <p className={cn("text-[11px] font-medium uppercase tracking-wider mb-2", darkMode ? "text-gray-500" : "text-white/60")}>
                         {language === 'ar' ? 'الرصيد الإجمالي' : 'Total Balance'}
                     </p>
-                    <h2 className={cn("text-[36px] font-extrabold tracking-tight leading-none mb-1", darkMode ? "text-white" : "text-white")}>
+                    <motion.h2
+                        key={totalBalance}
+                        initial={{ opacity: 0.6, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.3 }}
+                        className={cn("text-[36px] font-extrabold tracking-tight leading-none mb-1", darkMode ? "text-white" : "text-white")}
+                    >
                         ${totalBalance}
-                    </h2>
+                    </motion.h2>
                     <p className={cn("text-xs font-medium mb-4", darkMode ? "text-gray-500" : "text-white/50")}>USD</p>
 
                     <button
@@ -47,12 +59,22 @@ export default function WalletHeader({
                             darkMode ? "bg-white/5 hover:bg-white/8 text-gray-400 ring-white/10" : "bg-white/15 hover:bg-white/25 text-white/80 ring-white/20"
                         )}
                     >
-                        {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} className="opacity-60" />}
+                        <AnimatePresence mode="wait">
+                            {copied ? (
+                                <motion.span key="check" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
+                                    <Check size={13} className="text-green-400" />
+                                </motion.span>
+                            ) : (
+                                <motion.span key="copy" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
+                                    <Copy size={13} className="opacity-60" />
+                                </motion.span>
+                            )}
+                        </AnimatePresence>
                         <span className="font-mono tracking-tight">
-                            {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                            {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
                         </span>
                     </button>
-                </div>
+                </motion.div>
             )}
         </div>
     );

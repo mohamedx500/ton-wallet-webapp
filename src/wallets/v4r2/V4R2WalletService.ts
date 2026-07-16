@@ -32,6 +32,7 @@ import { TON_CONSTANTS, DEFAULT_CONFIG } from '../../types';
 export class V4R2WalletService {
     private readonly network: NetworkType;
     private readonly workchain: number;
+    private static readonly STANDARD_V4R2_WALLET_ID = 698983191;
 
     constructor(network: NetworkType = 'mainnet') {
         this.network = network;
@@ -47,6 +48,7 @@ export class V4R2WalletService {
         const wallet = WalletContractV4.create({
             publicKey: keyPair.publicKey,
             workchain: this.workchain,
+            walletId: V4R2WalletService.STANDARD_V4R2_WALLET_ID,
         });
 
         const address = wallet.address.toString({
@@ -72,6 +74,7 @@ export class V4R2WalletService {
         return WalletContractV4.create({
             publicKey,
             workchain: this.workchain,
+            walletId: V4R2WalletService.STANDARD_V4R2_WALLET_ID,
         });
     }
 

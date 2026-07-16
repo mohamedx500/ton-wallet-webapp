@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, Trash2, Pencil, Check, UserPlus, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { WalletAccount } from '../services/AccountManager';
+import ModalShell from './ModalShell';
+import { useToast } from './Toast';
 
 interface AccountsModalProps {
     isOpen: boolean;
@@ -22,6 +24,7 @@ export function AccountsModal({
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
     const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+    const toast = useToast();
 
     if (!isOpen) return null;
 
@@ -40,7 +43,7 @@ export function AccountsModal({
 
     const handleDeleteClick = (id: string) => {
         if (accounts.length <= 1) {
-            alert(language === 'ar' ? 'لا يمكن حذف الحساب الوحيد' : 'Cannot delete the only account');
+            toast.warning(language === 'ar' ? 'لا يمكن حذف الحساب الوحيد' : 'Cannot delete the only account');
             return;
         }
         setShowDeleteConfirm(id);
@@ -52,8 +55,8 @@ export function AccountsModal({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className={cn("w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-6 animate-slide-up sm:animate-scale-in", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={e => e.stopPropagation()}>
+        <ModalShell isOpen={isOpen} onClose={onClose} position="bottom">
+            <div className={cn("rounded-t-3xl sm:rounded-3xl p-6", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")}>
                 <div className="flex justify-between items-center mb-5">
                     <h3 className={cn("text-lg font-bold", darkMode ? "text-white" : "text-gray-900")}>
                         {language === 'ar' ? 'الحسابات' : 'Accounts'}
@@ -95,7 +98,7 @@ export function AccountsModal({
                                             )}
                                         </div>
                                         <p className={cn("text-[11px] mt-0.5 font-mono", darkMode ? "text-gray-600" : "text-gray-400")}>
-                                            {account.address ? `${account.address.slice(0, 6)}...${account.address.slice(-4)}` : '...'}
+                                            {account.address ? `${account.address.slice(0, 4)}...${account.address.slice(-4)}` : '...'}
                                         </p>
                                     </div>
                                 )}
@@ -143,7 +146,7 @@ export function AccountsModal({
                     {language === 'ar' ? 'إضافة حساب جديد' : 'Add Account'}
                 </button>
             </div>
-        </div>
+        </ModalShell>
     );
 }
 
@@ -161,6 +164,7 @@ export function AddAccountModal({ isOpen, onClose, onAdd, darkMode, language }: 
     const [password, setPassword] = useState('');
     const [importMnemonic, setImportMnemonic] = useState('');
     const [loading, setLoading] = useState(false);
+    const toast = useToast();
 
     if (!isOpen) return null;
 
@@ -180,7 +184,7 @@ export function AddAccountModal({ isOpen, onClose, onAdd, darkMode, language }: 
             setPassword('');
             setImportMnemonic('');
         } catch (e) {
-            alert('Error adding account');
+            toast.error('Error adding account');
         } finally {
             setLoading(false);
         }
@@ -192,8 +196,8 @@ export function AddAccountModal({ isOpen, onClose, onAdd, darkMode, language }: 
     );
 
     return (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className={cn("w-full max-w-sm rounded-3xl p-6 animate-scale-in", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={e => e.stopPropagation()}>
+        <ModalShell isOpen={isOpen} onClose={onClose}>
+            <div className={cn("rounded-3xl p-6", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")}>
                 <div className="flex justify-between items-center mb-5">
                     <h3 className={cn("text-lg font-bold", darkMode ? "text-white" : "text-gray-900")}>
                         {language === 'ar' ? 'إضافة حساب' : 'Add Account'}
@@ -231,6 +235,6 @@ export function AddAccountModal({ isOpen, onClose, onAdd, darkMode, language }: 
                     </div>
                 )}
             </div>
-        </div>
+        </ModalShell>
     );
 }

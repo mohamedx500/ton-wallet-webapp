@@ -9,9 +9,13 @@
         "preview": "vite preview",
         "test": "vitest run",
         "test:watch": "vitest",
-        "type-check": "tsc --noEmit"
+        "type-check": "tsc --noEmit",
+        "find:real-address": "node scripts/find-real-address.mjs"
     },
     "dependencies": {
+        "@radix-ui/react-dialog": "^1.1.15",
+        "@radix-ui/react-slot": "^1.2.4",
+        "@radix-ui/react-switch": "^1.2.6",
         "@ton/core": "^0.63.1",
         "@ton/crypto": "^3.3.0",
         "@ton/ton": "^16.2.2",

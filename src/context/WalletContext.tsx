@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { mnemonicValidate } from '@ton/crypto';
 import { WalletService } from '../services/WalletService';
 // @ts-ignore
 import { SecurityService } from '../services/SecurityService';
@@ -62,6 +63,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const [tokens, setTokens] = useState<any[]>([]);
     const [totalBalanceUSDT, setTotalBalanceUSDT] = useState('0.00');
 
+    const normalizeMnemonic = (words: string[]): string[] => {
+        return words
+            .map((word) =>
+                word
+                    .normalize('NFKD')
+                    .toLowerCase()
+                    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+                    .trim()
+            )
+            .filter(Boolean);
+    };
+
     // Init Accounts
     useEffect(() => {
         const loadAccounts = () => {
@@ -100,7 +113,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
             // Decrypt
             const seedStr = await securityService.decryptData(activeAccount.encryptedSeed, password);
-            const mnemonic = seedStr.split(' ');
+            const mnemonic = normalizeMnemonic(seedStr.split(' '));
 
             // Send
             let res;
@@ -390,7 +403,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setIsLoading(true);
         try {
             // Generate new mnemonic if not provided
-            const actualMnemonic = mnemonic.length > 0 ? mnemonic : await walletService.generateMnemonic();
+            const actualMnemonicRaw = mnemonic.length > 0 ? mnemonic : await walletService.generateMnemonic();
+            const actualMnemonic = normalizeMnemonic(actualMnemonicRaw);
+
+            const isMnemonicValid = await mnemonicValidate(actualMnemonic);
+            if (!isMnemonicValid || actualMnemonic.length !== 24) {
+                throw new Error('Invalid mnemonic phrase');
+            }
 
             // Setup password and get security data (hash + salt)
             await securityService.setupPassword(password);
@@ -443,7 +462,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                 return false;
             }
 
-            const mnemonic = seedStr.split(' ');
+            const mnemonic = normalizeMnemonic(seedStr.split(' '));
 
             // Validate that we got a proper mnemonic (24 words)
             if (mnemonic.length !== 24) {
@@ -454,8 +473,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             const wallet = await walletService.importWallet(mnemonic, type);
             setWalletAddress(wallet.address);
 
-            // Update address in storage if missing
-            if (!activeAccount.address) {
+            // Keep stored address synced with derived address
+            if (!activeAccount.address || activeAccount.address !== wallet.address) {
                 accountManager.updateAccount(activeAccount.id, { address: wallet.address });
                 setAccounts(accountManager.getAccounts());
             }
@@ -475,7 +494,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         try {
             // Verify by attempting decryption - will throw if password wrong
             const seedStr = await securityService.decryptData(activeAccount.encryptedSeed, password);
-            const mnemonic = seedStr.split(' ');
+            const mnemonic = normalizeMnemonic(seedStr.split(' '));
 
             if (mnemonic.length !== 24) {
                 throw new Error('Invalid password');

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowDown, ArrowUp, Check, Eye, EyeOff, Loader2, Share2, Wallet, TriangleAlert, ChevronRight, ArrowLeftRight, XCircle, Lock, TrendingUp } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { TON_TOKENS } from '../services/SwapService';
+import ModalShell from './ModalShell';
 
 interface BaseModalProps {
     isOpen: boolean;
@@ -343,8 +344,8 @@ export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMo
     });
 
     return (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end justify-center z-50 pointer-events-auto" onClick={onClose}>
-            <div className={cn("w-full max-w-md rounded-t-3xl p-6 h-[80vh] flex flex-col animate-slide-up", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
+        <ModalShell isOpen={isOpen} onClose={onClose} position="bottom" maxWidth="md">
+            <div className={cn("rounded-t-3xl p-6 h-[80vh] flex flex-col", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")}>
                 <div className={cn("w-10 h-1 rounded-full mx-auto mb-6 shrink-0", darkMode ? "bg-white/10" : "bg-gray-200")}></div>
 
                 {/* Header */}
@@ -443,7 +444,7 @@ export function TokenDetailsModal({ isOpen, onClose, token, transactions, darkMo
                     )}
                 </div>
             </div>
-        </div>
+        </ModalShell>
     );
 }
 
@@ -766,7 +767,7 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
                                 <div className="flex justify-between items-center px-4 py-3">
                                     <span className={cn("text-xs", darkMode ? "text-gray-500" : "text-gray-400")}>{language === 'ar' ? 'المستلم' : 'To'}</span>
                                     <span className={cn("font-bold text-sm font-mono", darkMode ? "text-white" : "text-gray-900")}>
-                                        {address.slice(0, 6)}...{address.slice(-4)}
+                                                                                {address.slice(0, 4)}...{address.slice(-4)}
                                     </span>
                                 </div>
 
