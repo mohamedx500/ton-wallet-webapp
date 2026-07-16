@@ -724,6 +724,10 @@ export class SwapService {
             throw new Error('User wallet address is required');
         }
 
+        if (quoteData.isEstimate) {
+            throw new Error('Cannot build a transaction from an estimated quote. Please refresh or wait for the API to connect.');
+        }
+
         const fromToken = this.getToken(quoteData.fromToken);
         const toToken = this.getToken(quoteData.toToken);
 
@@ -1084,7 +1088,7 @@ export class SwapService {
                 minOutputUnits
             );
         } else {
-            return this.buildDedustJettonSwap(
+            return await this.buildDedustJettonSwap(
                 senderAddress,
                 fromToken.address,
                 poolAddress || '',
@@ -1116,7 +1120,7 @@ export class SwapService {
 
         const userAddress = Address.parse(senderAddress);
         const pool = Address.parse(poolAddress || DEDUST_FACTORY);
-        const deadline = Math.floor(Date.now() / 1000) + 300; // 5 minutes
+        const deadline = Math.floor(Date.now() / 1000) + 1800; // 30 minutes
 
         // Build SwapParams (stored as ref)
         // swap_params#_ deadline:Timestamp recipient_addr:MsgAddressInt referral_addr:MsgAddress 
@@ -1181,13 +1185,13 @@ export class SwapService {
     /**
      * Build DeDust Jetton swap
      */
-    private buildDedustJettonSwap(
+    private async buildDedustJettonSwap(
         senderAddress: string,
         jettonAddress: string,
         poolAddress: string,
         amountUnits: string,
         minOutputUnits: string
-    ): SwapTransaction {
+    ): Promise<SwapTransaction> {
         const SWAP_OP = 0xea06185d;
 
         const swapStep = beginCell()
@@ -1198,7 +1202,7 @@ export class SwapService {
             .endCell();
 
         const swapParams = beginCell()
-            .storeUint(Math.floor(Date.now() / 1000) + 300, 32)
+            .storeUint(Math.floor(Date.now() / 1000) + 1800, 32)
             .storeAddress(Address.parse(senderAddress))
             .storeAddress(null)
             .storeMaybeRef(null)
@@ -1211,8 +1215,8 @@ export class SwapService {
             .storeRef(swapParams)
             .endCell();
 
-        // Get jetton vault address (in production, query from factory)
-        const jettonVault = this.getDedustJettonVault(jettonAddress);
+        // Get actual jetton vault address from factory
+        const jettonVault = await this.getDedustJettonVault(jettonAddress);
 
         return {
             type: 'jetton_transfer',
@@ -1226,12 +1230,41 @@ export class SwapService {
     }
 
     /**
-     * Get DeDust jetton vault address
-     * In production, this should query the DeDust factory contract
+     * Get actual DeDust jetton vault address via Toncenter
      */
-    private getDedustJettonVault(jettonAddress: string): string {
-        // Simplified - in production, query factory.getVault(jettonAddress)
-        return DEDUST_FACTORY;
+    private async getDedustJettonVault(jettonAddress: string): Promise<string> {
+        try {
+            const jettonMaster = Address.parse(jettonAddress);
+            const assetSlice = beginCell()
+                .storeUint(1, 4)
+                .storeInt(jettonMaster.workChain, 8)
+                .storeBuffer(jettonMaster.hash)
+                .endCell();
+
+            const res = await fetch('https://toncenter.com/api/v2/runGetMethod', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    address: DEDUST_FACTORY,
+                    method: 'get_vault_address',
+                    stack: [
+                        ["tvm.Slice", assetSlice.toBoc().toString('base64')]
+                    ]
+                })
+            });
+
+            const data = await res.json();
+            if (data.ok && data.result.exit_code === 0) {
+                const cellBytes = data.result.stack[0][1].bytes;
+                // Need to import Cell if not already imported
+                const cell = Cell.fromBoc(Buffer.from(cellBytes, 'base64'))[0];
+                return cell.beginParse().loadAddress().toString();
+            }
+            throw new Error('Failed to resolve DeDust Jetton Vault address');
+        } catch (e) {
+            console.error('[SwapService] Error getting DeDust Jetton Vault:', e);
+            throw new Error('Failed to resolve DeDust Jetton Vault address. Please try again.');
+        }
     }
 
     // ========================================================================
