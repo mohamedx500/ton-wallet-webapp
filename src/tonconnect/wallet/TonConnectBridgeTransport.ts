@@ -82,7 +82,7 @@ export class TonConnectBridgeTransport {
     ): Promise<void> {
         const appPublicKey = fromHex(appClientId);
         const encrypted = this.sessionCrypto.encrypt(plaintext, appPublicKey);
-        const b64 = btoa(String.fromCharCode(...encrypted));
+        const b64 = bytesToBase64(encrypted);
 
         const url = new URL(`${this.bridgeUrl}/message`);
         url.searchParams.set('client_id', this.clientId);
@@ -245,4 +245,13 @@ function fromHex(hex: string): Uint8Array {
         bytes[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
     }
     return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+    return btoa(binary);
 }

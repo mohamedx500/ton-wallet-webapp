@@ -19,8 +19,8 @@ const actions = [
     { id: 'send', icon: ArrowUp, labelEn: 'Send', labelAr: 'إرسال', color: 'blue' },
     { id: 'receive', icon: Download, labelEn: 'Receive', labelAr: 'استلام', color: 'green' },
     { id: 'swap', icon: ArrowRightLeft, labelEn: 'Swap', labelAr: 'تبديل', color: 'amber' },
-    { id: 'scan', icon: ScanLine, labelEn: 'Scan', labelAr: 'مسح', color: 'cyan' },
-    { id: 'multisend', icon: Users, labelEn: 'Multi', labelAr: 'متعدد', color: 'violet' },
+    { id: 'scan', icon: ScanLine, labelEn: 'Link', labelAr: 'ربط', color: 'cyan' },
+    { id: 'multisend', icon: Users, labelEn: 'Bulk', labelAr: 'جماعي', color: 'violet' },
 ];
 
 const actionColors: Record<string, { light: string; dark: string }> = {

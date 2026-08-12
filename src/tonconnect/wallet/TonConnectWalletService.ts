@@ -29,6 +29,10 @@ import { TonConnectSessionCrypto } from './TonConnectSessionCrypto';
 import { TonConnectBridgeTransport } from './TonConnectBridgeTransport';
 import { TonProofService } from './TonProofService';
 import { TonConnectWalletError } from './errors';
+import { decodeTonConnectManifest } from './decode';
+import { buildTonConnectConnectPayload } from './buildConnectReply';
+import { assertStandardWalletAuthority } from '../../wallet/OfficialStandardWalletSigner';
+import { assertHighloadWalletAuthority } from '../../wallet/highloadWalletContract';
 import type { WalletDescriptor } from '../../wallet/types';
 import type { NetworkId } from '../../core/chain';
 
@@ -43,22 +47,35 @@ export interface TonConnectPendingRequest {
 
 export type TonConnectRequestHandler = (pending: TonConnectPendingRequest) => void;
 
+export type ManifestTextFetcher = (manifestUrl: string) => Promise<string>;
+
 export interface TonConnectWalletServiceOptions {
     readonly store?: TonConnectSessionStore;
     readonly bridgeUrl?: string;
     readonly network: NetworkId;
     /** Max sessions to maintain simultaneously. Defaults to 10. */
     readonly maxSessions?: number;
+    /** Optional CORS proxy prefix for manifest fetch in browser wallets. */
+    readonly manifestProxyPrefix?: string;
+    /** Override manifest HTTP fetch (used by browser UI for proxy fallbacks). */
+    readonly manifestTextFetcher?: ManifestTextFetcher;
 }
 
 const MAX_MANIFEST_SIZE = 100_000;
 const DEFAULT_BRIDGE_URL = 'https://bridge.tonapi.io/bridge';
+/** Fallback used by web wallets when a dApp manifest blocks browser CORS. */
+const DEFAULT_MANIFEST_PROXY_PREFIX = 'https://walletbot.me/tonconnect-proxy/';
+const MANIFEST_FETCH_TIMEOUT_MS = 15_000;
 
 export class TonConnectWalletService {
     private readonly store: TonConnectSessionStore;
     private readonly bridgeUrl: string;
     private readonly network: NetworkId;
     private readonly maxSessions: number;
+    private readonly manifestProxyPrefix: string;
+    private readonly manifestTextFetcher: ManifestTextFetcher | null;
+    /** manifest file URL → validated manifest */
+    private readonly manifestByUrl = new Map<string, TonConnectManifest>();
     /** walletClientId → bridge transport */
     private readonly transports = new Map<string, TonConnectBridgeTransport>();
     /** walletClientId → in-memory session record */
@@ -72,6 +89,8 @@ export class TonConnectWalletService {
         this.bridgeUrl = options.bridgeUrl ?? DEFAULT_BRIDGE_URL;
         this.network = options.network;
         this.maxSessions = options.maxSessions ?? 10;
+        this.manifestProxyPrefix = options.manifestProxyPrefix ?? DEFAULT_MANIFEST_PROXY_PREFIX;
+        this.manifestTextFetcher = options.manifestTextFetcher ?? null;
     }
 
     // ─── Public API ───────────────────────────────────────────────────────────
@@ -93,6 +112,41 @@ export class TonConnectWalletService {
         await this.openTransport(session);
     }
 
+    public getExistingSession(accountId: string, appClientId: string): TonConnectSessionDescriptor | null {
+        for (const session of this.sessions.values()) {
+            if (session.accountId === accountId && session.appClientId === appClientId) {
+                return session;
+            }
+        }
+        try {
+            return this.store.get(this.network, accountId, appClientId);
+        } catch {
+            try {
+                this.store.remove(this.network, accountId, appClientId);
+            } catch {
+                /* ignore */
+            }
+            return null;
+        }
+    }
+
+    /** Clear every TON Connect session for the active wallet account. */
+    public clearSessionsForAccount(accountId: string): void {
+        this.store.removeAllForAccount(this.network, accountId);
+        for (const [walletClientId, session] of [...this.sessions.entries()]) {
+            if (session.accountId !== accountId) continue;
+            this.transports.get(walletClientId)?.destroy();
+            this.transports.delete(walletClientId);
+            this.sessions.delete(walletClientId);
+            this.manifests.delete(session.appClientId);
+        }
+    }
+
+    /** Fetch and validate the DApp manifest without creating a session. */
+    public async previewConnectLink(link: TonConnectLink): Promise<TonConnectManifest> {
+        return this.fetchManifest(link.request.manifestUrl);
+    }
+
     /**
      * Handle a parsed TonConnect link (from QR scan or deeplink).
      * Creates a new session, fetches the manifest, sends the connect response.
@@ -102,8 +156,14 @@ export class TonConnectWalletService {
         accountId: string,
         accountAddress: string,
         walletDescriptor: WalletDescriptor,
+        walletPublicKey: Buffer,
         proofAuthority: TonProofSigningAuthority,
     ): Promise<TonConnectSessionDescriptor> {
+        const existing = this.getExistingSession(accountId, link.appClientId);
+        if (existing) {
+            await this.clearSession(accountId, link.appClientId, existing.walletClientId);
+        }
+
         if (this.sessions.size >= this.maxSessions) {
             throw new TonConnectWalletError(
                 'INVALID_SESSION',
@@ -112,18 +172,32 @@ export class TonConnectWalletService {
         }
 
         const manifest = await this.fetchManifest(link.request.manifestUrl);
+        if (walletDescriptor.kind === 'standard') {
+            assertStandardWalletAuthority(walletDescriptor, this.network, {
+                publicKey: walletPublicKey,
+                sign: async () => Buffer.alloc(64),
+            });
+        } else if (walletDescriptor.kind === 'highload-v3') {
+            assertHighloadWalletAuthority(walletDescriptor, walletPublicKey);
+        } else {
+            throw new TonConnectWalletError(
+                'INVALID_SESSION',
+                'This wallet type is not supported for TON Connect.',
+            );
+        }
+
         const sessionCrypto = new TonConnectSessionCrypto();
         const walletClientId = sessionCrypto.clientId;
 
-        // Build ton_proof if requested by the DApp
+        // Build ton_proof when requested by the dApp
         const proofItem = link.request.items.find((i) => i.name === 'ton_proof');
-        let proofResult: Record<string, unknown> | undefined;
+        let proofResult: Awaited<ReturnType<TonProofService['create']>> | undefined;
         if (proofItem && proofItem.name === 'ton_proof') {
             const proofService = new TonProofService({
                 network: this.network,
                 clock: () => Math.floor(Date.now() / 1000),
             });
-            const proof = await proofService.create(
+            proofResult = await proofService.create(
                 {
                     network: this.network,
                     walletAddress: accountAddress,
@@ -133,26 +207,20 @@ export class TonConnectWalletService {
                 },
                 proofAuthority,
             );
-            proofResult = { name: 'ton_proof', proof: proof.proof };
         }
 
-        // Build connect response
-        const networkId = this.network === 'mainnet' ? '-239' : '-3';
-        const items: Array<Record<string, unknown>> = [
-            {
-                name: 'ton_addr',
-                address: accountAddress,
-                network: networkId,
-                publicKey: accountAddress,
-                walletStateInit: '',
-            },
-        ];
-        if (proofResult) items.push(proofResult);
+        const connectPayload = buildTonConnectConnectPayload(
+            walletDescriptor,
+            this.network,
+            walletPublicKey,
+            proofResult,
+        );
 
+        const eventId = 0;
         const responsePayload = JSON.stringify({
             event: 'connect',
-            id: Date.now(),
-            payload: { items },
+            id: eventId,
+            payload: connectPayload,
         });
 
         // Build and persist the session record
@@ -174,18 +242,23 @@ export class TonConnectWalletService {
             nextEventId: 0,
         });
 
-        this.store.put(session);
         this.sessions.set(walletClientId, session);
 
-        // Open the SSE transport and send connect response
-        await this.openTransport(session, sessionCrypto);
-        const transport = this.transports.get(walletClientId);
-        if (transport) {
+        try {
+            await this.openTransport(session, sessionCrypto);
+            const transport = this.transports.get(walletClientId);
+            if (!transport) {
+                throw new TonConnectWalletError('INVALID_SESSION', 'The TON Connect bridge transport is unavailable.');
+            }
             await transport.send(link.appClientId, new TextEncoder().encode(responsePayload));
-        }
 
-        this.manifests.set(link.appClientId, manifest);
-        return session;
+            this.store.put(session);
+            this.manifests.set(link.appClientId, manifest);
+            return session;
+        } catch (error) {
+            await this.clearSession(accountId, link.appClientId, walletClientId);
+            throw error;
+        }
     }
 
     /**
@@ -210,6 +283,25 @@ export class TonConnectWalletService {
             this.store.remove(session.network, session.accountId, session.appClientId);
         } catch {/* ignore if already removed */}
         this.sessions.delete(walletClientId);
+    }
+
+    private async clearSession(
+        accountId: string,
+        appClientId: string,
+        walletClientId: string,
+    ): Promise<void> {
+        const transport = this.transports.get(walletClientId);
+        if (transport) {
+            transport.destroy();
+            this.transports.delete(walletClientId);
+        }
+        this.sessions.delete(walletClientId);
+        this.manifests.delete(appClientId);
+        try {
+            this.store.remove(this.network, accountId, appClientId);
+        } catch {
+            /* already removed */
+        }
     }
 
     // ─── Private ──────────────────────────────────────────────────────────────
@@ -295,37 +387,95 @@ export class TonConnectWalletService {
         this.requestHandler(pending);
     }
 
-    private async fetchManifest(url: string): Promise<TonConnectManifest> {
-        const cached = [...this.manifests.values()].find((m) => m.url === url);
+    private async fetchManifest(manifestUrl: string): Promise<TonConnectManifest> {
+        const cached = this.manifestByUrl.get(manifestUrl);
         if (cached) return cached;
 
-        const response = await fetch(url, { signal: AbortSignal.timeout(8_000) });
-        if (!response.ok) {
+        let text: string;
+        try {
+            text = await this.fetchManifestText(manifestUrl);
+        } catch (cause) {
+            if (cause instanceof TonConnectWalletError) throw cause;
             throw new TonConnectWalletError(
                 'MANIFEST_UNAVAILABLE',
-                `Failed to fetch DApp manifest from ${url}: HTTP ${response.status}`,
+                'Application manifest is unavailable.',
+                {},
+                { cause },
             );
         }
-        const text = await response.text();
+
         if (text.length > MAX_MANIFEST_SIZE) {
             throw new TonConnectWalletError(
                 'INVALID_MANIFEST',
                 'DApp manifest exceeds the maximum allowed size.',
             );
         }
-        const json = JSON.parse(text) as Record<string, unknown>;
-        const origin = new URL(url).origin;
-        const manifest: TonConnectManifest = {
-            url,
-            origin,
-            name: String(json['name'] ?? origin),
-            iconUrl: String(json['iconUrl'] ?? ''),
-            termsOfUseUrl: (json['termsOfUseUrl'] as string | undefined) ?? null,
-            privacyPolicyUrl: (json['privacyPolicyUrl'] as string | undefined) ?? null,
-        };
-        this.manifests.set(url, manifest);
+
+        let json: unknown;
+        try {
+            json = JSON.parse(text) as unknown;
+        } catch (cause) {
+            throw new TonConnectWalletError(
+                'INVALID_MANIFEST',
+                'The application manifest is invalid.',
+                {},
+                { cause },
+            );
+        }
+
+        const manifest = decodeTonConnectManifest(json, manifestUrl);
+        this.manifestByUrl.set(manifestUrl, manifest);
         return manifest;
     }
+
+    private async fetchManifestText(manifestUrl: string): Promise<string> {
+        if (this.manifestTextFetcher) {
+            return this.manifestTextFetcher(manifestUrl);
+        }
+
+        try {
+            return await this.fetchManifestTextFrom(manifestUrl);
+        } catch {
+            if (!this.manifestProxyPrefix) {
+                throw new TonConnectWalletError(
+                    'MANIFEST_UNAVAILABLE',
+                    'Application manifest is unavailable.',
+                );
+            }
+            const proxyUrl = `${this.manifestProxyPrefix}${manifestUrl}`;
+            return this.fetchManifestTextFrom(proxyUrl);
+        }
+    }
+
+    private async fetchManifestTextFrom(url: string): Promise<string> {
+        let response: Response;
+        try {
+            response = await fetchWithTimeout(url, MANIFEST_FETCH_TIMEOUT_MS);
+        } catch (cause) {
+            throw new TonConnectWalletError(
+                'MANIFEST_UNAVAILABLE',
+                'Application manifest is unavailable.',
+                {},
+                { cause },
+            );
+        }
+
+        if (!response.ok) {
+            throw new TonConnectWalletError(
+                'MANIFEST_UNAVAILABLE',
+                'Application manifest is unavailable.',
+            );
+        }
+
+        return response.text();
+    }
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
+    if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+        return fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    }
+    return fetch(url);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

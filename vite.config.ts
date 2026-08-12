@@ -15,6 +15,20 @@ import path from 'node:path';
 import { defineConfig } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
+function tonConnectManifestProxyRewrite(requestPath: string): string {
+    const queryIndex = requestPath.indexOf('?');
+    if (queryIndex === -1) return requestPath;
+    const manifestUrl = new URLSearchParams(requestPath.slice(queryIndex + 1)).get('url');
+    if (!manifestUrl) return requestPath;
+    return `/tonconnect-proxy/${manifestUrl}`;
+}
+
+const tonConnectManifestProxy = {
+    target: 'https://walletbot.me',
+    changeOrigin: true,
+    rewrite: tonConnectManifestProxyRewrite,
+} as const;
+
 export default defineConfig({
     plugins: [
         react(),
@@ -41,6 +55,16 @@ export default defineConfig({
     },
     // Relative, so the built bundle works when served from a subdirectory.
     base: './',
+    server: {
+        proxy: {
+            '/api/tonconnect-manifest': tonConnectManifestProxy,
+        },
+    },
+    preview: {
+        proxy: {
+            '/api/tonconnect-manifest': tonConnectManifestProxy,
+        },
+    },
     test: {
         // `node`, not `jsdom`: the critical paths under test — payload
         // construction, allow-list enforcement, slippage arithmetic — are pure

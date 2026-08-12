@@ -8,8 +8,9 @@ import ActivityTab from './components/ActivityTab';
 import SettingsTab from './components/SettingsTab';
 import NftTab from './components/NftTab';
 import NftSendModal from './components/NftSendModal';
-import QrScanModal from './components/QrScanModal';
+import LinkWalletModal from './components/LinkWalletModal';
 import TonConnectRequestModal from './components/TonConnectRequestModal';
+import TonConnectConnectModal from './components/TonConnectConnectModal';
 import { SendModal, ReceiveModal, BackupModal, PhraseModal, TransactionModal, PasswordPromptModal, SelectWalletTypeModal, TokenDetailsModal, PrivateKeyModal, SwapModal } from './components/WalletModals';
 import { AccountsModal, AddAccountModal } from './components/AccountModals';
 import NetworkBanner from './components/NetworkBanner';
@@ -19,11 +20,19 @@ import { StrictSwapRecoveryBootstrap } from './StrictSwapRecoveryBootstrap';
 import { useStrictSwapRuntime } from './StrictSwapProvider';
 import { TonConnectWalletService } from './tonconnect/wallet/TonConnectWalletService';
 import type { TonConnectPendingRequest } from './tonconnect/wallet/TonConnectWalletService';
+import { TonConnectWalletError } from './tonconnect/wallet/errors';
+import { browserFetchManifestText } from './tonconnect/browser/fetchManifestText';
+import { WalletService } from './services/WalletService';
+import { isSameAddress } from './core/address';
+import { walletDescriptorForAccountType } from './wallet/standardWalletDescriptor';
+import type { WalletContractVersion } from './wallet/types';
 import type { NftItem } from './nft/types';
-import type { TonConnectLink } from './tonconnect/wallet/types';
+import type { TonConnectLink, TonConnectManifest } from './tonconnect/wallet/types';
+import { tonConnectErrorMessage } from './qr';
 import { PasswordConfirmedTransactionExecutor } from './tonconnect/PasswordConfirmedTransactionExecutor';
 import { TransferExecutor } from './transfer/TransferExecutor';
 import { Cell } from '@ton/core';
+import { sign } from '@ton/crypto';
 
 export default function TonWallet() {
     // Context State
@@ -71,17 +80,27 @@ export default function TonWallet() {
     const [selectedNft, setSelectedNft] = useState<NftItem | null>(null);
     const [showNftSendModal, setShowNftSendModal] = useState(false);
 
-    // ── QR Scanner ───────────────────────────────────────────────────────────
-    const [showQrScan, setShowQrScan] = useState(false);
+    // ── Link Wallet ──────────────────────────────────────────────────────────
+    const [showLinkModal, setShowLinkModal] = useState(false);
 
     // ── TON Connect ──────────────────────────────────────────────────────────
     const tcServiceRef = useRef<TonConnectWalletService | null>(null);
+    const walletServiceRef = useRef(new WalletService());
     const [pendingTcRequest, setPendingTcRequest] = useState<TonConnectPendingRequest | null>(null);
     const [showTcModal, setShowTcModal] = useState(false);
+    const [pendingConnectLink, setPendingConnectLink] = useState<TonConnectLink | null>(null);
+    const [connectManifest, setConnectManifest] = useState<TonConnectManifest | null>(null);
+    const [connectManifestLoading, setConnectManifestLoading] = useState(false);
+    const [connectError, setConnectError] = useState<string | null>(null);
+    const [connectConnecting, setConnectConnecting] = useState(false);
+    const [showConnectModal, setShowConnectModal] = useState(false);
 
     // Initialize TC service whenever network changes
     useEffect(() => {
-        const svc = new TonConnectWalletService({ network });
+        const svc = new TonConnectWalletService({
+            network,
+            manifestTextFetcher: browserFetchManifestText,
+        });
         svc.setRequestHandler((pending) => {
             setPendingTcRequest(pending);
             setShowTcModal(true);
@@ -89,30 +108,99 @@ export default function TonWallet() {
         tcServiceRef.current = svc;
     }, [network]);
 
-    // Handle a scanned TON Connect QR link
-    const handleTonConnectLink = useCallback((link: TonConnectLink) => {
+    // Handle a validated TON Connect link from scan, upload, or paste
+    const handleTonConnectLinkDecoded = useCallback((link: TonConnectLink) => {
         const svc = tcServiceRef.current;
-        if (!svc || !walletAddress || !activeAccount) return;
-        // proofAuthority stub — real impl would use the wallet's signing key
-        const proofAuthority = {
-            walletAddress: walletAddress,
-            sign: async (_hash: Uint8Array) => new Uint8Array(64),
-        };
-        const walletDesc: any = activeAccount.type === 'highload-v3' ? {
-            kind: 'highload-v3',
-            version: 'highload-v3',
-            address: activeAccount.address,
-            subwalletId: 4269,
-            timeoutSeconds: 300,
-        } : {
-            kind: 'standard',
-            version: activeAccount.type,
-            address: activeAccount.address,
-            subwalletId: 698983191,
-        };
-        svc.handleConnectLink(link, activeAccount.id, walletAddress, walletDesc, proofAuthority)
-            .catch((err: unknown) => console.error('[TON Connect]', err));
-    }, [walletAddress, activeAccount]);
+        if (!svc || !activeAccount) return;
+
+        setPendingConnectLink(link);
+        setConnectManifest(null);
+        setConnectError(null);
+        setConnectManifestLoading(true);
+        setShowConnectModal(true);
+
+        void svc.previewConnectLink(link)
+            .then((manifest) => {
+                setConnectManifest(manifest);
+                setConnectError(null);
+            })
+            .catch((err: unknown) => {
+                setConnectError(tonConnectErrorMessage(err, language));
+            })
+            .finally(() => {
+                setConnectManifestLoading(false);
+            });
+    }, [activeAccount, language]);
+
+    const handleTonConnectApproved = useCallback(async (password: string) => {
+        const link = pendingConnectLink;
+        const svc = tcServiceRef.current;
+        if (!link || !svc || !walletAddress || !activeAccount) return;
+
+        setConnectConnecting(true);
+        setConnectError(null);
+
+        let secretKey: Buffer | null = null;
+        try {
+            const mnemonic = await getDecryptedSeed(password);
+            const walletVersion = activeAccount.type as WalletContractVersion;
+            const imported = await walletServiceRef.current.importWallet(
+                mnemonic,
+                walletVersion,
+                network === 'testnet',
+            );
+            if (!isSameAddress(imported.address, activeAccount.address)) {
+                throw new TonConnectWalletError(
+                    'INVALID_SESSION',
+                    'The active account does not match the selected wallet version. Change wallet type in Settings, then connect again.',
+                );
+            }
+
+            const resolvedAddress = imported.address;
+            const keyPair = imported.keyPair;
+            secretKey = keyPair.secretKey;
+
+            svc.clearSessionsForAccount(activeAccount.id);
+
+            const walletDesc = walletDescriptorForAccountType(walletVersion, resolvedAddress);
+
+            const proofAuthority = {
+                walletAddress: resolvedAddress,
+                sign: async (hash: Uint8Array) => {
+                    const signature = sign(Buffer.from(hash), keyPair.secretKey);
+                    return new Uint8Array(signature);
+                },
+            };
+
+            await svc.handleConnectLink(
+                link,
+                activeAccount.id,
+                resolvedAddress,
+                walletDesc,
+                keyPair.publicKey,
+                proofAuthority,
+            );
+
+            setShowConnectModal(false);
+            setPendingConnectLink(null);
+            setConnectManifest(null);
+            setConnectError(null);
+        } catch (err: unknown) {
+            setConnectError(tonConnectErrorMessage(err, language));
+        } finally {
+            secretKey?.fill(0);
+            setConnectConnecting(false);
+        }
+    }, [activeAccount, getDecryptedSeed, language, network, pendingConnectLink, walletAddress]);
+
+    const handleConnectModalClose = useCallback(() => {
+        setShowConnectModal(false);
+        setPendingConnectLink(null);
+        setConnectManifest(null);
+        setConnectError(null);
+        setConnectManifestLoading(false);
+        setConnectConnecting(false);
+    }, []);
 
     const handleCopy = () => {
         // Actually copy the wallet address to clipboard
@@ -211,6 +299,7 @@ export default function TonWallet() {
             setIsSeedLoading(true); // Reuse loading state
             try {
                 await switchWalletType(pendingWalletType, password);
+                tcServiceRef.current?.clearSessionsForAccount(activeAccount?.id ?? '');
                 setShowPasswordModal(false);
                 setPasswordAction(null);
                 alert(`Switched to ${pendingWalletType}`);
@@ -264,7 +353,7 @@ export default function TonWallet() {
                             setShowReceiveModal={setShowReceiveModal}
                             setShowSwapModal={setShowSwapModal}
                             onMultiSendClick={openMultiSend}
-                            onScanQr={() => setShowQrScan(true)}
+                            onScanQr={() => setShowLinkModal(true)}
                             tokens={tokens}
                             onTokenClick={(token) => {
                                 setSelectedToken(token);
@@ -503,24 +592,40 @@ export default function TonWallet() {
                     }}
                 />
 
-                {/* ── QR Scanner Modal ─────────────────────────────────────── */}
-                <QrScanModal
-                    isOpen={showQrScan}
-                    onClose={() => setShowQrScan(false)}
-                    onTonConnect={handleTonConnectLink}
+                {/* ── Link Wallet Modal ────────────────────────────────────── */}
+                <LinkWalletModal
+                    isOpen={showLinkModal}
+                    onClose={() => setShowLinkModal(false)}
+                    network={network}
+                    onTonConnect={handleTonConnectLinkDecoded}
                     onTransfer={(address, amount, comment) => {
-                        setShowQrScan(false);
+                        setShowLinkModal(false);
                         setShowSendModal(true);
-                        // Pre-fill will be handled by SendModal via URL state in a future slice
                         console.info('[QR] Transfer to', address, amount, comment);
                     }}
                     onAddress={(address) => {
-                        setShowQrScan(false);
+                        setShowLinkModal(false);
                         setShowSendModal(true);
                         console.info('[QR] Address', address);
                     }}
                     darkMode={darkMode}
                     language={language}
+                />
+
+                {/* ── TON Connect Connection Approval ────────────────────── */}
+                <TonConnectConnectModal
+                    isOpen={showConnectModal}
+                    link={pendingConnectLink}
+                    manifest={connectManifest}
+                    walletLabel={activeAccount?.name ?? walletAddress ?? ''}
+                    loading={connectManifestLoading}
+                    connecting={connectConnecting}
+                    error={connectError}
+                    darkMode={darkMode}
+                    language={language}
+                    onClose={handleConnectModalClose}
+                    onConnect={handleTonConnectApproved}
+                    onReject={handleConnectModalClose}
                 />
 
                 {/* ── TON Connect Request Modal ────────────────────────────── */}

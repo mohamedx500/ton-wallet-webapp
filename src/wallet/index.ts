@@ -38,6 +38,12 @@ export {
     OfficialStandardWalletSigner,
     assertStandardWalletAuthority,
 } from './OfficialStandardWalletSigner';
+export { standardWalletDescriptorForVersion, walletDescriptorForAccountType } from './standardWalletDescriptor';
+export {
+    assertHighloadWalletAuthority,
+    createHighloadWalletContract,
+    highloadTonConnectAddressPayload,
+} from './highloadWalletContract';
 export type {
     OfficialStandardWalletSignerOptions,
     StandardWalletSigningAuthority,

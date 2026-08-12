@@ -56,6 +56,32 @@ export class TonConnectSessionStore {
         }
     }
 
+    /** Drop every persisted session for one wallet account (e.g. after a wallet-version change). */
+    public removeAllForAccount(network: NetworkId, accountId: string): void {
+        assertSafeKeyPart(accountId, 'account ID');
+        const prefix = `${this.keyPrefix}:${network}:${accountId}:`;
+        for (const key of this.listStorageKeys(prefix)) {
+            try {
+                this.storage.removeItem(key);
+            } catch {
+                /* best effort */
+            }
+        }
+    }
+
+    private listStorageKeys(prefix: string): readonly string[] {
+        const storage = this.storage as TonConnectSynchronousStorage & Partial<Storage>;
+        if (typeof storage.length !== 'number' || typeof storage.key !== 'function') {
+            return [];
+        }
+        const keys: string[] = [];
+        for (let index = 0; index < storage.length; index += 1) {
+            const key = storage.key(index);
+            if (key?.startsWith(prefix)) keys.push(key);
+        }
+        return keys;
+    }
+
     private key(network: NetworkId, accountId: string, appClientId: string): string {
         assertSafeKeyPart(accountId, 'account ID');
         if (!HEX_32_BYTES.test(appClientId)) {
