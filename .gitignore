@@ -30,3 +30,7 @@ require
 .env.*
 .workbuddy-ai/
 scratch.ts
+
+ton-highload_wallet_v3/
+dist/
+commit-msg.txt
