@@ -63,6 +63,10 @@ export interface TonConnectSessionDescriptor {
     readonly walletDescriptor: WalletDescriptor;
     readonly manifestUrl: string;
     readonly manifestOrigin: string;
+    /** Optional display name from the dApp manifest. */
+    readonly appName: string | null;
+    /** Optional icon URL from the dApp manifest. */
+    readonly appIconUrl: string | null;
     readonly bridgeUrl: string;
     readonly createdAtMs: number;
     readonly lastRequestId: string | null;

@@ -7,10 +7,10 @@ import HomeTab from './components/HomeTab';
 import ActivityTab from './components/ActivityTab';
 import SettingsTab from './components/SettingsTab';
 import NftTab from './components/NftTab';
-import NftSendModal from './components/NftSendModal';
 import LinkWalletModal from './components/LinkWalletModal';
 import TonConnectRequestModal from './components/TonConnectRequestModal';
 import TonConnectConnectModal from './components/TonConnectConnectModal';
+import ConnectedAppsModal from './components/ConnectedAppsModal';
 import { SendModal, ReceiveModal, BackupModal, PhraseModal, TransactionModal, PasswordPromptModal, SelectWalletTypeModal, TokenDetailsModal, PrivateKeyModal, SwapModal } from './components/WalletModals';
 import { AccountsModal, AddAccountModal } from './components/AccountModals';
 import NetworkBanner from './components/NetworkBanner';
@@ -27,7 +27,7 @@ import { isSameAddress } from './core/address';
 import { walletDescriptorForAccountType } from './wallet/standardWalletDescriptor';
 import type { WalletContractVersion } from './wallet/types';
 import type { NftItem } from './nft/types';
-import type { TonConnectLink, TonConnectManifest } from './tonconnect/wallet/types';
+import type { TonConnectLink, TonConnectManifest, TonConnectSessionDescriptor } from './tonconnect/wallet/types';
 import { tonConnectErrorMessage } from './qr';
 import { PasswordConfirmedTransactionExecutor } from './tonconnect/PasswordConfirmedTransactionExecutor';
 import { TransferExecutor } from './transfer/TransferExecutor';
@@ -76,10 +76,6 @@ export default function TonWallet() {
     const [showPrivateKeyModal, setShowPrivateKeyModal] = useState(false);
     const [privateKey, setPrivateKey] = useState('');
 
-    // ── NFT ──────────────────────────────────────────────────────────────────
-    const [selectedNft, setSelectedNft] = useState<NftItem | null>(null);
-    const [showNftSendModal, setShowNftSendModal] = useState(false);
-
     // ── Link Wallet ──────────────────────────────────────────────────────────
     const [showLinkModal, setShowLinkModal] = useState(false);
 
@@ -94,6 +90,9 @@ export default function TonWallet() {
     const [connectError, setConnectError] = useState<string | null>(null);
     const [connectConnecting, setConnectConnecting] = useState(false);
     const [showConnectModal, setShowConnectModal] = useState(false);
+    const [showConnectedApps, setShowConnectedApps] = useState(false);
+    const [connectedSessions, setConnectedSessions] = useState<readonly TonConnectSessionDescriptor[]>([]);
+    const [connectedAppsLoading, setConnectedAppsLoading] = useState(false);
 
     // Initialize TC service whenever network changes
     useEffect(() => {
@@ -106,7 +105,97 @@ export default function TonWallet() {
             setShowTcModal(true);
         });
         tcServiceRef.current = svc;
+        setConnectedSessions([]);
     }, [network]);
+
+    // Restore persisted TON Connect sessions for the active account
+    useEffect(() => {
+        const svc = tcServiceRef.current;
+        const accountId = activeAccount?.id;
+        if (!svc || !accountId || !isLoggedIn) {
+            setConnectedSessions([]);
+            return;
+        }
+        let cancelled = false;
+        void svc.restoreSessionsForAccount(accountId).then((sessions) => {
+            if (!cancelled) setConnectedSessions(sessions);
+        }).catch(() => {
+            if (!cancelled) setConnectedSessions(svc.getSessionsForAccount(accountId));
+        });
+        return () => { cancelled = true; };
+    }, [activeAccount?.id, isLoggedIn, network]);
+
+    const refreshConnectedSessions = useCallback(() => {
+        const svc = tcServiceRef.current;
+        const accountId = activeAccount?.id;
+        if (!svc || !accountId) {
+            setConnectedSessions([]);
+            return;
+        }
+        setConnectedSessions(svc.getSessionsForAccount(accountId));
+    }, [activeAccount?.id]);
+
+    const openConnectedApps = useCallback(() => {
+        const svc = tcServiceRef.current;
+        const accountId = activeAccount?.id;
+        setShowConnectedApps(true);
+        if (!svc || !accountId) {
+            setConnectedSessions([]);
+            return;
+        }
+        setConnectedAppsLoading(true);
+        void svc.restoreSessionsForAccount(accountId)
+            .then((sessions) => setConnectedSessions(sessions))
+            .catch(() => setConnectedSessions(svc.getSessionsForAccount(accountId)))
+            .finally(() => setConnectedAppsLoading(false));
+    }, [activeAccount?.id]);
+
+    const handleDisconnectApp = useCallback(async (walletClientId: string) => {
+        const svc = tcServiceRef.current;
+        if (!svc) return;
+        await svc.disconnectSession(walletClientId);
+        refreshConnectedSessions();
+    }, [refreshConnectedSessions]);
+
+    const handleNftSend = useCallback(async ({ item, recipient, comment, password }: {
+        item: NftItem;
+        recipient: string;
+        comment: string;
+        password: string;
+    }) => {
+        if (strictSwapRuntime.status !== 'ready' || !activeAccount) {
+            throw new Error('Secure runtime not available');
+        }
+        const executor = new TransferExecutor({
+            network,
+            decryptor: {
+                decrypt: async (_enc: unknown, pw: string) => {
+                    return (await getDecryptedSeed(pw)).join(' ');
+                },
+            },
+            walletCoordinatorFactory: strictSwapRuntime.graph.walletCoordinatorFactory,
+            signerClock: () => Math.floor(Date.now() / 1000),
+        });
+
+        await executor.send({
+            kind: 'nft',
+            network,
+            nftAddress: item.address,
+            recipient,
+            responseDestination: activeAccount.address,
+            forwardAmount: 50_000_000n,
+            attachedTon: 70_000_000n,
+            forwardPayload: comment || '',
+            purpose: `Transfer NFT ${item.metadata?.name || 'NFT'}`,
+        } as any, {
+            address: activeAccount.address,
+            wallet: walletDescriptorForAccountType(
+                activeAccount.type as WalletContractVersion,
+                activeAccount.address,
+            ),
+            encryptedMnemonic: activeAccount.encryptedSeed as any,
+        } as any, password);
+    }, [activeAccount, getDecryptedSeed, network, strictSwapRuntime]);
 
     // Handle a validated TON Connect link from scan, upload, or paste
     const handleTonConnectLinkDecoded = useCallback((link: TonConnectLink) => {
@@ -185,13 +274,14 @@ export default function TonWallet() {
             setPendingConnectLink(null);
             setConnectManifest(null);
             setConnectError(null);
+            refreshConnectedSessions();
         } catch (err: unknown) {
             setConnectError(tonConnectErrorMessage(err, language));
         } finally {
             secretKey?.fill(0);
             setConnectConnecting(false);
         }
-    }, [activeAccount, getDecryptedSeed, language, network, pendingConnectLink, walletAddress]);
+    }, [activeAccount, getDecryptedSeed, language, network, pendingConnectLink, refreshConnectedSessions, walletAddress]);
 
     const handleConnectModalClose = useCallback(() => {
         setShowConnectModal(false);
@@ -330,7 +420,10 @@ export default function TonWallet() {
             {/* Network Status Banner */}
             <NetworkBanner darkMode={darkMode} network={network} />
 
-            <div className={`w-full max-w-md ${darkMode ? 'bg-[hsl(228,18%,7%)] ring-1 ring-white/[0.06] shadow-[0_0_60px_-15px_rgba(0,0,0,0.5)]' : 'bg-white/80 backdrop-blur-xl ring-1 ring-black/[0.08] shadow-2xl'} rounded-3xl overflow-hidden flex flex-col h-[85vh] relative`}>
+            <div
+                data-wallet-shell
+                className={`w-full max-w-md ${darkMode ? 'bg-[hsl(228,18%,7%)] ring-1 ring-white/[0.06] shadow-[0_0_60px_-15px_rgba(0,0,0,0.5)]' : 'bg-white/80 backdrop-blur-xl ring-1 ring-black/[0.08] shadow-2xl'} rounded-3xl overflow-hidden flex flex-col h-[85vh] relative`}
+            >
                 <WalletHeader
                     darkMode={darkMode}
                     language={language}
@@ -378,11 +471,13 @@ export default function TonWallet() {
                             darkMode={darkMode}
                             language={language}
                             walletAddress={walletAddress ?? ''}
+                            network={network}
                             onRequestFetch={async (address, signal) => {
                                 const { NftService } = await import('./nft/NftService');
                                 const svc = new NftService({ network });
                                 return svc.fetchAll(address, { signal });
                             }}
+                            onSendNft={handleNftSend}
                         />
                     )}
 
@@ -402,6 +497,8 @@ export default function TonWallet() {
                                 setActiveTab('home');
                             }}
                             onWalletTypeClick={() => setShowWalletTypeModal(true)}
+                            onConnectedAppsClick={openConnectedApps}
+                            connectedAppsCount={connectedSessions.length}
                             network={network}
                             onNetworkChange={setNetwork}
                         />
@@ -540,58 +637,6 @@ export default function TonWallet() {
                 {/* Multi-Send Modal */}
                 <MultiSendModal darkMode={darkMode} language={language} />
 
-                {/* ── NFT Send Modal ───────────────────────────────────────── */}
-                <NftSendModal
-                    isOpen={showNftSendModal}
-                    item={selectedNft}
-                    onClose={() => { setShowNftSendModal(false); setSelectedNft(null); }}
-                    darkMode={darkMode}
-                    language={language}
-                    ownerAddress={walletAddress ?? ''}
-                    onSend={async ({ item: _item, recipient, comment: _comment, password: _pw }) => {
-                        if (strictSwapRuntime.status !== 'ready') {
-                            throw new Error("Secure runtime not available");
-                        }
-                        const executor = new TransferExecutor({
-                            network,
-                            decryptor: {
-                                decrypt: async (enc: any, pw: string) => {
-                                    return (await getDecryptedSeed(pw)).join(' ');
-                                }
-                            },
-                            walletCoordinatorFactory: strictSwapRuntime.status === 'ready' ? strictSwapRuntime.graph.walletCoordinatorFactory : ({} as any),
-                            signerClock: () => Math.floor(Date.now() / 1000)
-                        });
-
-                        await executor.send({
-                            kind: 'nft',
-                            network,
-                            nftAddress: _item.address,
-                            recipient,
-                            responseDestination: activeAccount!.address,
-                            forwardAmount: 50000000n, // 0.05 TON
-                            attachedTon: 70000000n, // 0.07 TON
-                            forwardPayload: _comment || '',
-                            purpose: `Transfer NFT ${_item.metadata?.name || 'NFT'}`
-                        } as any, {
-                            address: activeAccount!.address,
-                            wallet: activeAccount!.type === 'highload-v3' ? {
-                                kind: 'highload-v3',
-                                version: 'highload-v3',
-                                address: activeAccount!.address,
-                                subwalletId: 4269,
-                                timeoutSeconds: 300,
-                            } : {
-                                kind: 'standard',
-                                version: activeAccount!.type as any,
-                                address: activeAccount!.address,
-                                subwalletId: 698983191,
-                            } as any,
-                            encryptedMnemonic: activeAccount!.encryptedSeed as any,
-                        }, _pw);
-                    }}
-                />
-
                 {/* ── Link Wallet Modal ────────────────────────────────────── */}
                 <LinkWalletModal
                     isOpen={showLinkModal}
@@ -626,6 +671,16 @@ export default function TonWallet() {
                     onClose={handleConnectModalClose}
                     onConnect={handleTonConnectApproved}
                     onReject={handleConnectModalClose}
+                />
+
+                <ConnectedAppsModal
+                    isOpen={showConnectedApps}
+                    sessions={connectedSessions}
+                    loading={connectedAppsLoading}
+                    darkMode={darkMode}
+                    language={language}
+                    onClose={() => setShowConnectedApps(false)}
+                    onDisconnect={handleDisconnectApp}
                 />
 
                 {/* ── TON Connect Request Modal ────────────────────────────── */}

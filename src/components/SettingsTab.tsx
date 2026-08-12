@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, ChevronRight, Moon, BellRing, Languages, Wallet, LogOut, Globe } from 'lucide-react';
+import { ShieldCheck, ChevronRight, Moon, BellRing, Languages, Wallet, LogOut, Globe, Link2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface SettingsTabProps {
@@ -14,6 +14,8 @@ interface SettingsTabProps {
     setShowPhraseModal: (v: boolean) => void;
     onLogout: () => void;
     onWalletTypeClick: () => void;
+    onConnectedAppsClick: () => void;
+    connectedAppsCount: number;
     network: 'mainnet' | 'testnet';
     onNetworkChange: (n: 'mainnet' | 'testnet') => void;
 }
@@ -104,7 +106,8 @@ function NetworkSwitch({ network, onChange, darkMode, language }: {
 export default function SettingsTab({
     darkMode, setDarkMode, language, setLanguage, walletType,
     notifications, setNotifications, setShowBackupModal, setShowPhraseModal,
-    onLogout, onWalletTypeClick, network, onNetworkChange
+    onLogout, onWalletTypeClick, onConnectedAppsClick, connectedAppsCount,
+    network, onNetworkChange
 }: SettingsTabProps) {
     return (
         <div className="px-5 pb-6 pt-3">
@@ -145,8 +148,32 @@ export default function SettingsTab({
                     sublabel={language === 'ar' ? 'احفظ المحفظة بأمان' : 'Save wallet securely'}
                     darkMode={darkMode}
                     onClick={() => setShowBackupModal(true)}
-                    isLast
                     trailing={<ChevronRight size={16} className={darkMode ? "text-gray-600" : "text-gray-300"} />}
+                />
+                <SettingsRow
+                    icon={Link2}
+                    label={language === 'ar' ? 'التطبيقات المتصلة' : 'Connected Apps'}
+                    sublabel={
+                        connectedAppsCount > 0
+                            ? (language === 'ar' ? `${connectedAppsCount} متصل` : `${connectedAppsCount} connected`)
+                            : (language === 'ar' ? 'إدارة جلسات TON Connect' : 'Manage TON Connect sessions')
+                    }
+                    darkMode={darkMode}
+                    onClick={onConnectedAppsClick}
+                    isLast
+                    trailing={
+                        <div className="flex items-center gap-1.5">
+                            {connectedAppsCount > 0 && (
+                                <span className={cn(
+                                    "text-[11px] font-bold px-2 py-0.5 rounded-md ring-1",
+                                    darkMode ? "text-blue-300 ring-blue-400/20 bg-blue-500/10" : "text-blue-600 ring-blue-500/20 bg-blue-50",
+                                )}>
+                                    {connectedAppsCount}
+                                </span>
+                            )}
+                            <ChevronRight size={16} className={darkMode ? "text-gray-600" : "text-gray-300"} />
+                        </div>
+                    }
                 />
             </div>
 

@@ -69,6 +69,32 @@ export class TonConnectSessionStore {
         }
     }
 
+    /** Load every persisted session for one wallet account. */
+    public listForAccount(network: NetworkId, accountId: string): readonly TonConnectStoredSession[] {
+        assertSafeKeyPart(accountId, 'account ID');
+        const prefix = `${this.keyPrefix}:${network}:${accountId}:`;
+        const sessions: TonConnectStoredSession[] = [];
+        for (const key of this.listStorageKeys(prefix)) {
+            let raw: string | null;
+            try {
+                raw = this.storage.getItem(key);
+            } catch {
+                continue;
+            }
+            if (raw === null) continue;
+            try {
+                sessions.push(decodeStoredSession(JSON.parse(raw) as unknown));
+            } catch {
+                try {
+                    this.storage.removeItem(key);
+                } catch {
+                    /* ignore corrupt */
+                }
+            }
+        }
+        return sessions;
+    }
+
     private listStorageKeys(prefix: string): readonly string[] {
         const storage = this.storage as TonConnectSynchronousStorage & Partial<Storage>;
         if (typeof storage.length !== 'number' || typeof storage.key !== 'function') {
@@ -92,7 +118,7 @@ export class TonConnectSessionStore {
 }
 
 export function decodeStoredSession(value: unknown): TonConnectStoredSession {
-    const record = exactRecord(value, [
+    const record = decodeRecord(value, [
         'schemaVersion',
         'network',
         'accountId',
@@ -107,7 +133,7 @@ export function decodeStoredSession(value: unknown): TonConnectStoredSession {
         'createdAtMs',
         'lastRequestId',
         'nextEventId',
-    ]);
+    ], ['appName', 'appIconUrl']);
     if (record['schemaVersion'] !== 1) throw invalidSession('The TON Connect session schema version is unsupported.');
     const network = record['network'];
     if (network !== 'mainnet' && network !== 'testnet') throw invalidSession('The TON Connect session network is invalid.');
@@ -134,6 +160,8 @@ export function decodeStoredSession(value: unknown): TonConnectStoredSession {
     if (!walletDescriptor || typeof walletDescriptor !== 'object' || typeof walletDescriptor.kind !== 'string') {
         throw invalidSession('The TON Connect wallet descriptor is invalid.');
     }
+    const appName = optionalDisplayString(record, 'appName', 128);
+    const appIconUrl = optionalHttpsUrl(record, 'appIconUrl');
     return Object.freeze({
         schemaVersion: 1,
         network,
@@ -145,6 +173,8 @@ export function decodeStoredSession(value: unknown): TonConnectStoredSession {
         walletDescriptor,
         manifestUrl,
         manifestOrigin,
+        appName,
+        appIconUrl,
         bridgeUrl,
         createdAtMs,
         lastRequestId,
@@ -152,16 +182,50 @@ export function decodeStoredSession(value: unknown): TonConnectStoredSession {
     });
 }
 
-function exactRecord(value: unknown, fields: readonly string[]): Readonly<Record<string, unknown>> {
+function decodeRecord(
+    value: unknown,
+    required: readonly string[],
+    optional: readonly string[],
+): Readonly<Record<string, unknown>> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
         throw invalidSession('The TON Connect session record is invalid.');
     }
     const record = value as Readonly<Record<string, unknown>>;
     const keys = Object.keys(record);
-    if (keys.length !== fields.length || keys.some((key) => !fields.includes(key))) {
+    const allowed = new Set([...required, ...optional]);
+    if (required.some((key) => !keys.includes(key)) || keys.some((key) => !allowed.has(key))) {
         throw invalidSession('The TON Connect session record has missing or unknown fields.');
     }
     return record;
+}
+
+function optionalDisplayString(
+    record: Readonly<Record<string, unknown>>,
+    key: string,
+    maxLength: number,
+): string | null {
+    const value = record[key];
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'string' || value.trim().length === 0 || value.length > maxLength) {
+        throw invalidSession(`The TON Connect ${key} is invalid.`);
+    }
+    return value.trim();
+}
+
+function optionalHttpsUrl(record: Readonly<Record<string, unknown>>, key: string): string | null {
+    const value = record[key];
+    if (value === undefined || value === null) return null;
+    if (typeof value !== 'string') throw invalidSession(`The TON Connect ${key} is invalid.`);
+    let url: URL;
+    try {
+        url = new URL(value);
+    } catch (cause) {
+        throw new TonConnectWalletError('INVALID_SESSION', `The TON Connect ${key} is invalid.`, {}, { cause });
+    }
+    if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') {
+        throw invalidSession(`The TON Connect ${key} is invalid.`);
+    }
+    return url.href;
 }
 
 function requiredString(record: Readonly<Record<string, unknown>>, key: string): string {

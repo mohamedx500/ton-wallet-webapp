@@ -21,6 +21,14 @@ class MemoryStorage implements TonConnectSynchronousStorage {
     public removeItem(key: string): void {
         this.values.delete(key);
     }
+
+    public get length(): number {
+        return this.values.size;
+    }
+
+    public key(index: number): string | null {
+        return Array.from(this.values.keys())[index] ?? null;
+    }
 }
 
 function linkFromSample(): TonConnectLink {

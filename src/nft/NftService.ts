@@ -98,7 +98,11 @@ export class NftService {
             if (!address) return null;
 
             const collection = this.parseCollection(raw['collection'] as Record<string, unknown> | undefined);
-            const metadata = this.parseMetadata(raw['metadata'] as Record<string, unknown> | undefined);
+            const metadata = this.parseMetadata(
+                raw['metadata'] as Record<string, unknown> | undefined,
+                raw['previews'],
+                collection?.image ?? null,
+            );
 
             const collectionAddress = collection?.address?.toLowerCase() ?? '';
             const isDomain =
@@ -134,18 +138,37 @@ export class NftService {
         if (!address) return null;
 
         const meta = raw['metadata'] as Record<string, unknown> | undefined;
+        const name = (meta?.['name'] as string | undefined)
+            ?? (raw['name'] as string | undefined)
+            ?? null;
+        const description = (meta?.['description'] as string | undefined)
+            ?? (raw['description'] as string | undefined)
+            ?? null;
         return Object.freeze({
             address,
-            name: (meta?.['name'] as string | undefined) ?? null,
-            description: (meta?.['description'] as string | undefined) ?? null,
-            image: this.resolveImageUrl((meta?.['image'] as string | undefined) ?? null),
+            name,
+            description,
+            image: this.resolveImageUrl(
+                (meta?.['image'] as string | undefined)
+                ?? (raw['image'] as string | undefined)
+                ?? null,
+            ),
             itemCount: typeof raw['next_item_index'] === 'number' ? (raw['next_item_index'] as number) : null,
         });
     }
 
-    private parseMetadata(raw: Record<string, unknown> | undefined): NftMetadata {
+    private parseMetadata(
+        raw: Record<string, unknown> | undefined,
+        previews: unknown,
+        collectionImage: string | null,
+    ): NftMetadata {
         if (!raw) {
-            return { name: null, description: null, image: null, attributes: [] };
+            return Object.freeze({
+                name: null,
+                description: null,
+                image: this.pickPreviewImage(previews) ?? collectionImage,
+                attributes: [],
+            });
         }
         const attributes: NftAttribute[] = [];
         const rawAttrs = raw['attributes'];
@@ -164,12 +187,38 @@ export class NftService {
                 }
             }
         }
+        const metadataImage = this.resolveImageUrl((raw['image'] as string | undefined) ?? null);
         return Object.freeze({
             name: (raw['name'] as string | undefined) ?? null,
             description: (raw['description'] as string | undefined) ?? null,
-            image: this.resolveImageUrl((raw['image'] as string | undefined) ?? null),
+            image: metadataImage ?? this.pickPreviewImage(previews) ?? collectionImage,
             attributes,
         });
+    }
+
+    /**
+     * TonAPI serves DNS / many NFT images via `previews` (imgproxy) rather than
+     * `metadata.image`. Prefer a mid/high resolution preview for gallery cards.
+     */
+    private pickPreviewImage(previews: unknown): string | null {
+        if (!Array.isArray(previews) || previews.length === 0) return null;
+        const scored = previews
+            .map((entry) => {
+                if (!entry || typeof entry !== 'object') return null;
+                const record = entry as Record<string, unknown>;
+                const url = typeof record['url'] === 'string' ? record['url'] : null;
+                if (!url) return null;
+                const resolution = typeof record['resolution'] === 'string' ? record['resolution'] : '';
+                const match = /^(\d+)x(\d+)$/u.exec(resolution);
+                const size = match ? Number(match[1]) * Number(match[2]) : 0;
+                return { url, size };
+            })
+            .filter((entry): entry is { url: string; size: number } => entry !== null);
+        if (scored.length === 0) return null;
+        scored.sort((a, b) => b.size - a.size);
+        // Prefer ~500px when available; otherwise the largest preview.
+        const preferred = scored.find((entry) => entry.size >= 500 * 500 && entry.size <= 600 * 600);
+        return this.resolveImageUrl((preferred ?? scored[0])!.url);
     }
 
     private resolveImageUrl(url: string | null): string | null {

@@ -103,13 +103,40 @@ export class TonConnectWalletService {
         return Array.from(this.sessions.values());
     }
 
+    /** Sessions for one account (in-memory first, otherwise loaded from persistence). */
+    public getSessionsForAccount(accountId: string): readonly TonConnectSessionDescriptor[] {
+        const live = Array.from(this.sessions.values()).filter((session) => session.accountId === accountId);
+        if (live.length > 0) return live;
+        return this.store.listForAccount(this.network, accountId);
+    }
+
     /**
      * Re-open bridge transport for a previously persisted session.
      * Call on app startup for each session loaded from storage.
      */
     public async restoreSession(session: TonConnectStoredSession): Promise<void> {
         this.sessions.set(session.walletClientId, session);
+        if (session.appName && session.appIconUrl) {
+            this.manifests.set(session.appClientId, Object.freeze({
+                url: session.manifestOrigin,
+                origin: session.manifestOrigin,
+                name: session.appName,
+                iconUrl: session.appIconUrl,
+                termsOfUseUrl: null,
+                privacyPolicyUrl: null,
+            }));
+        }
         await this.openTransport(session);
+    }
+
+    /** Restore every persisted session for the active account and reopen bridge transports. */
+    public async restoreSessionsForAccount(accountId: string): Promise<readonly TonConnectSessionDescriptor[]> {
+        const stored = this.store.listForAccount(this.network, accountId);
+        for (const session of stored) {
+            if (this.sessions.has(session.walletClientId)) continue;
+            await this.restoreSession(session);
+        }
+        return this.getSessionsForAccount(accountId);
     }
 
     public getExistingSession(accountId: string, appClientId: string): TonConnectSessionDescriptor | null {
@@ -236,6 +263,8 @@ export class TonConnectWalletService {
             walletSecretKey: Buffer.from(keyPair.secretKey).toString('hex'),
             manifestUrl: link.request.manifestUrl,
             manifestOrigin: manifest.origin,
+            appName: manifest.name,
+            appIconUrl: manifest.iconUrl,
             bridgeUrl: this.bridgeUrl,
             createdAtMs: Date.now(),
             lastRequestId: null,
@@ -283,6 +312,7 @@ export class TonConnectWalletService {
             this.store.remove(session.network, session.accountId, session.appClientId);
         } catch {/* ignore if already removed */}
         this.sessions.delete(walletClientId);
+        this.manifests.delete(session.appClientId);
     }
 
     private async clearSession(

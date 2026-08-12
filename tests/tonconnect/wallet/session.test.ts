@@ -25,6 +25,14 @@ class MemoryStorage implements TonConnectSynchronousStorage {
     public removeItem(key: string): void {
         this.values.delete(key);
     }
+
+    public get length(): number {
+        return this.values.size;
+    }
+
+    public key(index: number): string | null {
+        return Array.from(this.values.keys())[index] ?? null;
+    }
 }
 
 function fixture(): TonConnectStoredSession {
@@ -44,6 +52,8 @@ function fixture(): TonConnectStoredSession {
         } as any,
         manifestUrl: 'https://app.example/tonconnect-manifest.json',
         manifestOrigin: 'https://app.example',
+        appName: 'Example App',
+        appIconUrl: 'https://app.example/icon.png',
         bridgeUrl: 'https://connect.ton.org/bridge/',
         createdAtMs: 1_700_000_000_000,
         lastRequestId: null,
@@ -115,6 +125,39 @@ describe('wallet-side TON Connect session storage', () => {
 
         store.remove('mainnet', 'account-1', session.appClientId);
         expect(store.get('mainnet', 'account-1', session.appClientId)).toBeNull();
+    });
+
+    it('lists and clears all sessions for an account', () => {
+        const storage = new MemoryStorage();
+        const store = new TonConnectSessionStore({ storage });
+        const first = fixture();
+        const second = Object.freeze({
+            ...first,
+            appClientId: '55'.repeat(32),
+            walletClientId: '66'.repeat(32),
+            walletSecretKey: '77'.repeat(32),
+            appName: null,
+            appIconUrl: null,
+        });
+        store.put(first);
+        store.put(second);
+        expect(store.listForAccount('mainnet', 'account-1')).toHaveLength(2);
+        store.removeAllForAccount('mainnet', 'account-1');
+        expect(store.listForAccount('mainnet', 'account-1')).toHaveLength(0);
+    });
+
+    it('accepts legacy sessions without appName/appIconUrl', () => {
+        const storage = new MemoryStorage();
+        const store = new TonConnectSessionStore({ storage });
+        const session = fixture();
+        const { appName: _n, appIconUrl: _i, ...legacy } = session as any;
+        storage.setItem(
+            `ton-wallet:tonconnect:sessions:v1:mainnet:account-1:${session.appClientId}`,
+            JSON.stringify(legacy),
+        );
+        const loaded = store.get('mainnet', 'account-1', session.appClientId);
+        expect(loaded?.appName).toBeNull();
+        expect(loaded?.appIconUrl).toBeNull();
     });
 
     it('fails closed on unknown fields, malformed secrets, and cross-schema records', () => {

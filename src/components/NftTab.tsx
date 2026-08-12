@@ -12,25 +12,53 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Grid2X2, List, Send, Globe, Clock, RefreshCw, Package, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Grid2X2, List, Send, Globe, Clock, RefreshCw, Package, Loader2, BadgeCheck } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { NftItem } from '../nft/types';
-import NftSendModal from './NftSendModal';
+import NftDetailModal from './NftDetailModal';
 
 interface NftTabProps {
     darkMode: boolean;
     language: string;
     walletAddress: string;
+    network: 'mainnet' | 'testnet';
     onRequestFetch: (address: string, signal: AbortSignal) => Promise<NftItem[]>;
+    onSendNft?: (params: {
+        item: NftItem;
+        recipient: string;
+        comment: string;
+        password: string;
+    }) => Promise<void>;
 }
 
 type ViewMode = 'grid' | 'list';
 
-function NftImage({ src, alt, className }: { src: string | null; alt: string; className?: string }) {
+function NftImage({
+    src,
+    alt,
+    kind,
+    className,
+}: {
+    src: string | null;
+    alt: string;
+    kind: NftItem['kind'];
+    className?: string;
+}) {
     const [errored, setErrored] = useState(false);
 
     if (!src || errored) {
+        if (kind === 'domain') {
+            return (
+                <div className={cn('relative flex flex-col items-center justify-center bg-gradient-to-b from-white to-gray-100 text-gray-900', className)}>
+                    <Globe size={18} className="absolute top-2 left-2 text-gray-700" />
+                    <p className="px-2 text-center text-[11px] font-bold leading-tight truncate w-full">{alt}</p>
+                    <span className="absolute bottom-2 text-[9px] text-gray-500 flex items-center gap-0.5">
+                        TON DNS <BadgeCheck size={10} className="text-blue-500" />
+                    </span>
+                </div>
+            );
+        }
         return (
             <div className={cn('flex items-center justify-center bg-gradient-to-br from-blue-900/30 to-purple-900/30', className)}>
                 <Package size={24} className="text-blue-400/50" />
@@ -65,7 +93,7 @@ function ExpiryBadge({ expiresAtUnix, darkMode }: { expiresAtUnix: number | null
     );
 }
 
-export default function NftTab({ darkMode, language, walletAddress, onRequestFetch }: NftTabProps) {
+export default function NftTab({ darkMode, language, walletAddress, network, onRequestFetch, onSendNft }: NftTabProps) {
     const [items, setItems] = useState<NftItem[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -197,6 +225,7 @@ export default function NftTab({ darkMode, language, walletAddress, onRequestFet
                                         key={item.address}
                                         initial={{ opacity: 0, scale: 0.95 }}
                                         animate={{ opacity: 1, scale: 1 }}
+                                        onClick={() => setSelectedItem(item)}
                                         className={cn(
                                             'rounded-2xl overflow-hidden ring-1 transition-shadow hover:shadow-lg cursor-pointer',
                                             darkMode
@@ -207,6 +236,7 @@ export default function NftTab({ darkMode, language, walletAddress, onRequestFet
                                         <NftImage
                                             src={item.metadata.image}
                                             alt={item.metadata.name ?? 'NFT'}
+                                            kind={item.kind}
                                             className="w-full aspect-square"
                                         />
                                         <div className="p-2.5">
@@ -242,8 +272,9 @@ export default function NftTab({ darkMode, language, walletAddress, onRequestFet
                                         key={item.address}
                                         initial={{ opacity: 0, x: -8 }}
                                         animate={{ opacity: 1, x: 0 }}
+                                        onClick={() => setSelectedItem(item)}
                                         className={cn(
-                                            'flex items-center gap-3 p-3 rounded-2xl ring-1',
+                                            'flex items-center gap-3 p-3 rounded-2xl ring-1 cursor-pointer',
                                             darkMode
                                                 ? 'bg-white/[0.03] ring-white/[0.06]'
                                                 : 'bg-white ring-black/[0.05] shadow-sm',
@@ -252,6 +283,7 @@ export default function NftTab({ darkMode, language, walletAddress, onRequestFet
                                         <NftImage
                                             src={item.metadata.image}
                                             alt={item.metadata.name ?? 'NFT'}
+                                            kind={item.kind}
                                             className="w-12 h-12 rounded-xl flex-shrink-0"
                                         />
                                         <div className="flex-1 min-w-0">
@@ -271,7 +303,7 @@ export default function NftTab({ darkMode, language, walletAddress, onRequestFet
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => setSelectedItem(item)}
+                                            onClick={(e) => { e.stopPropagation(); setSelectedItem(item); }}
                                             className="flex-shrink-0 p-2 rounded-xl bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
                                         >
                                             <Send size={14} />
@@ -284,14 +316,16 @@ export default function NftTab({ darkMode, language, walletAddress, onRequestFet
                 ))}
             </div>
 
-            {/* Send modal */}
-            <NftSendModal
+            {/* Detail + transfer */}
+            <NftDetailModal
                 isOpen={selectedItem !== null}
                 item={selectedItem}
                 onClose={() => setSelectedItem(null)}
                 darkMode={darkMode}
                 language={language}
                 ownerAddress={walletAddress}
+                network={network}
+                onSend={onSendNft}
             />
         </div>
     );
