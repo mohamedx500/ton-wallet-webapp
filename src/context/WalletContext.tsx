@@ -9,6 +9,11 @@ import { TonApiService } from '../services/TonApiService';
 import { AccountManager, WalletAccount } from '../services/AccountManager';
 // @ts-ignore
 import { networkService, ConnectionQuality } from '../services/NetworkService';
+import {
+    filterDisplayTokens,
+    primaryTokenSymbol,
+    type DisplayTokenInput,
+} from '../tokens/filterDisplayTokens';
 
 interface WalletContextType {
     isLoggedIn: boolean;
@@ -237,79 +242,101 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             // 3. Get Jettons
             const jettons = await tonApiService.getJettons(walletAddress, isTestnet);
 
-            // 4. Build Tokens List
-            const tokenList: any[] = [];
+            // 4. Build Tokens List (raw), then filter for display
+            const rawTokens: DisplayTokenInput[] = [];
 
-            // Add TON
-            tokenList.push({
+            // Add TON / Gram (native)
+            rawTokens.push({
+                id: 'native',
                 name: 'Gram',
                 symbol: 'Gram',
-                balance: balTon.toFixed(2),
-                value: `$${(balTon * tonPrice).toFixed(2)}`,
+                balance: balTon,
+                priceUsd: tonPrice > 0 ? tonPrice : null,
+                valueUsd: tonPrice > 0 ? balTon * tonPrice : null,
+                verification: 'whitelist',
+                isNative: true,
+                network: isTestnet ? 'testnet' : 'mainnet',
+                diff24h: tonDiff,
                 icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png',
-                price: tonPrice,
-                diff: tonDiff,
-                rawBalance: balTon
+                decimals: 9,
             });
-
-            // Add USDT/Others
-            let totalUsd = balTon * tonPrice;
 
             // Helper to check if a symbol is USDT (handles both USD₮ and USDT)
             const isUsdtSymbol = (sym: string | undefined) =>
                 sym === 'USDT' || sym === 'USD₮' || sym?.toLowerCase() === 'usdt';
 
             jettons.forEach((j: any) => {
-                const amount = j.balance / Math.pow(10, j.jetton.decimals);
-                const symbol = j.jetton.symbol;
+                const decimals = Number(j.jetton?.decimals ?? 9);
+                const rawBal = Number(j.balance);
+                if (!Number.isFinite(rawBal)) return;
+                const amount = rawBal / Math.pow(10, decimals);
+                const symbol = j.jetton?.symbol as string | undefined;
+                const name = (j.jetton?.name as string | undefined) || 'Unknown Token';
+                const master = (j.jetton?.address as string | undefined) || '';
+                if (!master) return;
 
-                // Normalize USDT symbol for consistent display
-                const displaySymbol = isUsdtSymbol(symbol) ? 'USD₮' : symbol;
+                const displaySymbol = isUsdtSymbol(symbol)
+                    ? 'USDT'
+                    : primaryTokenSymbol(symbol, name);
 
-                // Get price from jetton metadata (TonAPI includes rates in jetton response)
-                let price = 0;
+                let price: number | null = null;
                 let diff = '0.00%';
 
                 if (isUsdtSymbol(symbol)) {
-                    price = usdtPrice;
+                    price = usdtPrice > 0 ? usdtPrice : 1;
                     diff = usdtDiff;
                 } else if (j.price) {
-                    price = j.price.prices?.USD || j.price.value || 0;
-                    diff = j.price.diff_24h?.USD || '0.00%';
+                    const usd = j.price.prices?.USD ?? j.price.value;
+                    price = typeof usd === 'number' && Number.isFinite(usd) && usd > 0 ? usd : null;
+                    const d = j.price.diff_24h?.USD;
+                    if (d) diff = String(d).replace('−', '-');
                 }
 
-                const val = amount * price;
-                totalUsd += val;
+                const valueUsd = price != null ? amount * price : null;
 
-                tokenList.push({
-                    name: j.jetton.name,
+                rawTokens.push({
+                    id: master,
+                    name,
                     symbol: displaySymbol,
-                    balance: amount.toFixed(2),
-                    value: `$${val.toFixed(2)}`,
-                    icon: j.jetton.image,
-                    price: price,
-                    diff: diff,
-                    rawBalance: amount,
+                    balance: amount,
+                    priceUsd: price,
+                    valueUsd,
+                    verification: j.jetton?.verification ?? (j.jetton?.verified ? 'whitelist' : 'none'),
+                    isNative: false,
+                    network: isTestnet ? 'testnet' : 'mainnet',
+                    diff24h: diff,
+                    icon: j.jetton?.image,
+                    decimals,
                     walletAddress: j.wallet_address?.address,
-                    masterAddress: j.jetton.address,
-                    decimals: j.jetton.decimals || 9
                 });
             });
 
-            // Only add fallback USDT if no USDT variant found
-            const hasUsdt = tokenList.some(t => isUsdtSymbol(t.symbol));
-            if (!hasUsdt) {
-                tokenList.push({
-                    name: 'Tether USD',
-                    symbol: 'USD₮',
-                    balance: '0.00',
-                    value: '$0.00',
-                    icon: 'https://tether.to/images/logoCircle.png',
-                    price: usdtPrice,
-                    diff: usdtDiff,
-                    rawBalance: 0
-                });
-            }
+            const filtered = filterDisplayTokens(rawTokens, {
+                // On testnet prices are often missing — still show positive balances.
+            });
+
+            const tokenList = filtered.map((t) => ({
+                id: t.id,
+                name: t.name,
+                symbol: t.displaySymbol,
+                displaySymbol: t.displaySymbol,
+                balance: t.balanceLabel,
+                balanceLabel: t.balanceLabel,
+                value: t.valueLabel,
+                valueLabel: t.valueLabel,
+                icon: t.icon,
+                price: t.priceUsd ?? 0,
+                diff: t.diff24h ?? '0.00%',
+                rawBalance: t.balance,
+                walletAddress: t.walletAddress,
+                masterAddress: t.isNative ? undefined : t.id,
+                decimals: t.decimals ?? 9,
+                verification: t.verification,
+                isNative: t.isNative,
+                sparkline: t.sparkline ? [...t.sparkline] : undefined,
+            }));
+
+            const totalUsd = filtered.reduce((sum, t) => sum + (t.valueUsd ?? 0), 0);
 
             setTokens(tokenList);
             setTotalBalanceUSDT(totalUsd.toFixed(2));

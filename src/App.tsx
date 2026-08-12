@@ -6,7 +6,6 @@ import BottomNavigation from './components/BottomNavigation';
 import HomeTab from './components/HomeTab';
 import ActivityTab from './components/ActivityTab';
 import SettingsTab from './components/SettingsTab';
-import NftTab from './components/NftTab';
 import LinkWalletModal from './components/LinkWalletModal';
 import TonConnectRequestModal from './components/TonConnectRequestModal';
 import TonConnectConnectModal from './components/TonConnectConnectModal';
@@ -42,6 +41,10 @@ export default function TonWallet() {
 
     // UI State
     const [activeTab, setActiveTab] = useState('home');
+    // Legacy bottom-nav destination removed — Collectibles live under Wallet.
+    useEffect(() => {
+        if (activeTab === 'collectibles') setActiveTab('home');
+    }, [activeTab]);
     const [copied, setCopied] = useState(false);
     const [showSendModal, setShowSendModal] = useState(false);
     const [showReceiveModal, setShowReceiveModal] = useState(false);
@@ -445,13 +448,20 @@ export default function TonWallet() {
                             setShowSendModal={setShowSendModal}
                             setShowReceiveModal={setShowReceiveModal}
                             setShowSwapModal={setShowSwapModal}
-                            onMultiSendClick={openMultiSend}
                             onScanQr={() => setShowLinkModal(true)}
                             tokens={tokens}
                             onTokenClick={(token) => {
                                 setSelectedToken(token);
                                 setShowTokenModal(true);
                             }}
+                            walletAddress={walletAddress ?? ''}
+                            network={network}
+                            onRequestFetchNfts={async (address, signal) => {
+                                const { NftService } = await import('./nft/NftService');
+                                const svc = new NftService({ network });
+                                return svc.fetchAll(address, { signal });
+                            }}
+                            onSendNft={handleNftSend}
                         />
                     )}
 
@@ -463,21 +473,6 @@ export default function TonWallet() {
                             setActivityFilter={setActivityFilter}
                             activities={transactions}
                             setSelectedTransaction={setSelectedTransaction}
-                        />
-                    )}
-
-                    {activeTab === 'collectibles' && (
-                        <NftTab
-                            darkMode={darkMode}
-                            language={language}
-                            walletAddress={walletAddress ?? ''}
-                            network={network}
-                            onRequestFetch={async (address, signal) => {
-                                const { NftService } = await import('./nft/NftService');
-                                const svc = new NftService({ network });
-                                return svc.fetchAll(address, { signal });
-                            }}
-                            onSendNft={handleNftSend}
                         />
                     )}
 
@@ -510,6 +505,7 @@ export default function TonWallet() {
                     activeTab={activeTab}
                     setActiveTab={setActiveTab}
                     language={language}
+                    onBulkClick={openMultiSend}
                 />
 
                 <SendModal
