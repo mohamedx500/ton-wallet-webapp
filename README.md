@@ -1,192 +1,407 @@
 # TON Universal Wallet
 
-A production-ready, fully client-side decentralized wallet for **The Open Network (TON)**. Built with React, TypeScript, and the official TON SDK, it delivers a modern mobile-first experience with multi-version wallet support, enterprise-grade batch transactions, DEX aggregation, and encrypted key storage — no backend required.
+A **self-custodial, fully client-side** wallet for [The Open Network (TON)](https://ton.org) — create or import accounts, send TON & jettons, swap on STON.fi / DeDust, manage NFTs & `.ton` domains, connect dApps via TON Connect, and run **enterprise batch payouts** with **Highload V3**.
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue)]()
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)]()
-[![React](https://img.shields.io/badge/React-19-61dafb)]()
-[![Vite](https://img.shields.io/badge/Vite-5-646cff)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+Built with **TypeScript**, **React 19**, **Vite**, **Tailwind CSS**, and the official **`@ton/core` / `@ton/ton` / `@ton/crypto`** stack. No backend required: keys never leave the browser.
 
----
-
-## Overview
-
-TON Universal Wallet is a browser-based, self-custodial wallet designed as a Telegram-style mini-app. It supports the full lifecycle of TON wallet operations — from mnemonic generation and secure encrypted storage to sending transactions, swapping tokens, and executing enterprise-scale batch payouts. The UI follows a mobile-first card-based design with smooth animations and modern typography.
-
----
-
-## Features
-
-| Feature                   | Description                                                                                      |
-| ------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Multi-Wallet Versions** | Supports V3R1, V3R2, V4R2 (recommended), V5R1 (gasless), and Highload V3 (enterprise batch)     |
-| **Multi-Send**            | Send to multiple recipients in a single operation with W5 sequential batching or Highload V3 parallel burst mode |
-| **Jetton Support**        | USDT, NOT, DOGS, CATI, MAJOR, SCALE, HMSTR, and any TEP-74 compatible token                     |
-| **DNS Resolution**        | Resolve `.ton` domain names to wallet addresses directly in send and multi-send flows             |
-| **DEX Aggregation**       | Best-rate token swaps across STON.fi (V1 + V2) and DeDust.io with slippage protection            |
-| **Secure Storage**        | AES-256-GCM encrypted mnemonic storage with PBKDF2 key derivation                                |
-| **Offline Signing**       | Air-gapped transaction signing for cold-storage security                                          |
-| **Gasless Transactions**  | V5R1 gasless transaction support via relayer                                                      |
-| **Multi-Account**         | Create, import, rename, and switch between multiple wallet accounts                               |
-| **Multi-Network**         | Seamless switching between Mainnet and Testnet                                                    |
-| **Resilient Networking**  | Circuit breaker, failover, load balancing, and health-check mechanisms                            |
-| **Smart Rate Limiting**   | Intelligent API request management to prevent rate-limit errors from blockchain APIs              |
-| **Deposit Monitoring**    | Real-time incoming deposit detection with confirmation tracking                                   |
-| **CSV Import**            | Import recipient lists from CSV files for bulk multi-send operations                              |
-| **Mobile-First UI**       | Responsive card-based layout optimized for mobile with modern fonts and smooth animations         |
+<p align="center">
+  <a href="https://github.com/mohamedx500/ton-wallet-webapp"><img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="Version" /></a>
+  <a href="#tech-stack"><img src="https://img.shields.io/badge/TypeScript-5.3-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" /></a>
+  <a href="#tech-stack"><img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React" /></a>
+  <a href="#tech-stack"><img src="https://img.shields.io/badge/Vite-5-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" /></a>
+  <a href="https://ton.org"><img src="https://img.shields.io/badge/TON-Mainnet%20%2F%20Testnet-0098EA?style=flat-square" alt="TON" /></a>
+  <a href="https://t.me/openreason"><img src="https://img.shields.io/badge/Telegram-@openreason-26A5E4?style=flat-square&logo=telegram&logoColor=white" alt="Telegram" /></a>
+</p>
 
 ---
 
-## Multi-Send
+## Quick start
 
-The Multi-Send feature allows dispatching TON or Jetton transfers to many recipients at once. It supports two execution engines:
+### 1. Clone
 
-- **W5 Sequential Batching** — Uses WalletContractV5R1 to send up to 254 messages per batch with seqno-based confirmation polling between batches.
-- **Highload V3 Parallel Burst** — Sends independent messages in parallel using unique Query IDs for maximum throughput and partial-failure isolation.
+```bash
+git clone https://github.com/mohamedx500/ton-wallet-webapp.git
+cd ton-wallet-webapp
+```
 
-Additional capabilities include per-row address and amount validation, dynamic coin selection, .ton DNS resolution, amount and comment unification across rows, pre-flight balance checks, on-chain transaction validation, and real-time batch progress tracking with per-row status indicators.
+### 2. Install dependencies
 
----
+Requires **Node.js 18+** (20+ recommended).
 
-## Wallet Versions
+```bash
+npm install
+```
 
-| Version         | Max Messages | Key Feature              | Use Case                    |
-| --------------- | ------------ | ------------------------ | --------------------------- |
-| V3R1            | 4            | Basic wallet             | Simple transfers            |
-| V3R2            | 4            | Gas efficiency           | Cost-optimized transfers    |
-| **V4R2**        | 4            | Plugin support           | **Recommended default**     |
-| V5R1            | 4            | Gasless + extensions     | Sponsored transactions      |
-| Highload V3     | **254**      | Batch & parallel sending | Enterprise / mass payouts   |
+### 3. Configure environment
 
----
+```bash
+cp .env.example .env
+```
 
-## Supported Tokens
+Edit `.env`:
 
-| Token  | Decimals | Network           |
-| ------ | -------- | ----------------- |
-| TON    | 9        | Mainnet / Testnet |
-| USDT   | 6        | Mainnet / Testnet |
-| NOT    | 9        | Mainnet           |
-| DOGS   | 9        | Mainnet           |
-| CATI   | 9        | Mainnet           |
-| MAJOR  | 9        | Mainnet           |
-| HMSTR  | 9        | Mainnet           |
-| SCALE  | 9        | Mainnet           |
+```env
+# Required for strict swap / wallet composition
+VITE_TON_NETWORK=mainnet
 
----
+# Optional RPC timeout (ms)
+VITE_TON_RPC_TIMEOUT_MS=30000
 
-## Security
+# TonAPI — https://tonconsole.com
+VITE_TONAPI_KEY=
 
-| Layer           | Mechanism                                              |
-| --------------- | ------------------------------------------------------ |
-| Key Storage     | AES-256-GCM encryption with PBKDF2 key derivation     |
-| Private Keys    | Never persisted — derived from mnemonic on demand      |
-| Password        | PBKDF2 hash stored for verification only               |
-| Offline Signing | BOC serialization for air-gapped device signing        |
-| Rate Limiting   | Token bucket and per-user sliding window enforcement   |
+# Toncenter — https://toncenter.com or @tonapibot
+VITE_TONCENTER_API_KEY=
+```
 
----
+<details>
+<summary><strong>How to get API keys</strong></summary>
 
-## Tech Stack
+**TonAPI**
 
-| Technology       | Purpose                  |
-| ---------------- | ------------------------ |
-| React 19         | UI framework             |
-| TypeScript 5.3   | Type safety              |
-| Vite 5           | Build and dev server     |
-| TailwindCSS 3.4  | Styling                  |
-| Framer Motion 12 | Animations               |
-| @ton/ton 16      | TON blockchain SDK       |
-| @ton/crypto 3.3  | Cryptographic operations |
-| Vitest           | Testing framework        |
+1. Open [tonconsole.com](https://tonconsole.com)
+2. Create an account → generate an API key
+3. Set `VITE_TONAPI_KEY`
 
----
+**Toncenter**
 
-## Getting Started
+1. Open Telegram → [@tonapibot](https://t.me/tonapibot)
+2. `/start` → request a key
+3. Set `VITE_TONCENTER_API_KEY`
 
-### Prerequisites
+Optional failover keys (commented in `.env.example`):
 
-- Node.js (version 18 or higher)
-- npm or yarn
+- `VITE_TONAPI_KEY_2`
+- `VITE_TONCENTER_API_KEY_2`
 
-### Installation
+</details>
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/mohamedx500/ton-wallet-webapp.git
-   cd ton-wallet-webapp
-   ```
+> Keys stay in the Vite client bundle. Use **restricted / rate-limited** keys for public deployments.
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+### 4. Run
 
-3. **Set up environment variables:**
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Edit the `.env` file and add your API keys:
-   - Get a TonAPI key from [https://tonconsole.com](https://tonconsole.com)
-   - Get a Toncenter API key from [@tonapibot](https://t.me/tonapibot) on Telegram
-   
-   Example:
-   ```
-   VITE_TONAPI_KEY=your_tonapi_key_here
-   VITE_TONCENTER_API_KEY=your_toncenter_api_key_here
-   ```
-
-### Development
-
-**Start the development server:**
 ```bash
 npm run dev
 ```
 
-The app will be available at `http://localhost:5173`
+Open the URL Vite prints (typically `http://localhost:5173`).
 
-### Build for Production
+### 5. Production build
 
-**Build the project:**
 ```bash
 npm run build
-```
-
-**Preview the production build:**
-```bash
 npm run preview
 ```
 
-### Testing
+### Useful scripts
 
-**Run tests:**
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Dev server |
+| `npm run build` | Typecheck + production bundle |
+| `npm test` | Vitest (full suite) |
+| `npm run type-check` | `tsc --noEmit` |
+| `npm run type-check:strict` | Stricter TS project |
+
+---
+
+## Highlights
+
+| | |
+| --- | --- |
+| **Highload V3** | Up to **254 messages** per external message — parallel Query-ID bursts for mass payouts |
+| **Multi-wallet** | V3R1 · V3R2 · V4R2 · V5R1 · Highload V3 in one UI |
+| **Bulk / Multi-Send** | CSV import, `.ton` DNS, Jetton + TON rows, live batch progress |
+| **DEX swaps** | Strict STON.fi path with destination verification & recovery |
+| **TON Connect** | Connect Fragment & other dApps; sessions, `ton_proof`, Connected Apps |
+| **Collectibles** | NFTs, domains, transfer, Getgems / explorer links |
+| **Security** | AES-256-GCM + PBKDF2 mnemonic vault — password unlock only |
+
+---
+
+## Tech stack
+
+| Layer | Technologies |
+| --- | --- |
+| UI | React 19, Framer Motion, Lucide, Tailwind CSS, Radix primitives |
+| App | Vite 5, TypeScript 5.3 |
+| Chain | `@ton/core`, `@ton/ton`, `@ton/crypto`, `@tonconnect/protocol` |
+| DEX | `@ston-fi/sdk`, `@ston-fi/api` |
+| Data | TonAPI, Toncenter |
+| Tests | Vitest |
+
+---
+
+## Architecture
+
+> **Note:** Mermaid diagrams render on **GitHub**. Cursor / VS Code’s built-in Markdown preview often shows the source as a plain code block — that does not mean the chart is wrong.
+
+```mermaid
+flowchart TB
+  subgraph UI["UI (React)"]
+    Login[Login / Create / Import]
+    Home[Home · Tokens · Collectibles]
+    Activity[Activity]
+    Settings[Settings · Connected Apps]
+    Bulk[Bulk Multi-Send]
+    TC[TON Connect Modals]
+  end
+
+  subgraph CTX["Context"]
+    WC[WalletContext]
+    MS[MultiSendContext]
+  end
+
+  subgraph CORE["Core services"]
+    WS[Wallet / Highload services]
+    ENC[Encryption · Mnemonic]
+    NET[TonAPI · Toncenter · resilient RPC]
+    SWAP[Strict Swap Engine]
+    NFT[NFT · Domain services]
+    TCC[TON Connect Wallet Service]
+  end
+
+  subgraph CHAIN["TON Network"]
+    MN[Mainnet / Testnet]
+  end
+
+  Login --> WC
+  Home --> WC
+  Activity --> WC
+  Settings --> WC
+  Bulk --> MS
+  TC --> TCC
+  WC --> WS
+  WC --> ENC
+  WC --> NET
+  WC --> NFT
+  MS --> WS
+  SWAP --> NET
+  WS --> CHAIN
+  NET --> CHAIN
+  TCC --> CHAIN
+  NFT --> CHAIN
+  SWAP --> CHAIN
+```
+
+### Design principles
+
+- **Client-only custody** — seed phrases encrypted locally; unlock with password
+- **Versioned wallet adapters** — same UI flows across V3–V5 and Highload
+- **Strict swap composition** — quotes and destinations verified before sign/send
+- **Resilient networking** — timeouts, failover keys, connection quality awareness
+
+---
+
+## Project structure
+
+```text
+ton-wallet-webapp/
+├── src/
+│   ├── components/          # Screens, modals, MultiSend, NFT UI
+│   ├── context/             # WalletContext, MultiSendContext
+│   ├── wallets/             # v3r1 · v3r2 · v4r2 · v5r1 · highload-v3
+│   ├── wallet/              # Descriptors, signers, highload helpers
+│   ├── tonconnect/          # TON Connect wallet-side protocol
+│   ├── swap/                # Strict DEX engine (STON.fi)
+│   ├── nft/                 # Collectibles + .ton DomainService
+│   ├── tokens/              # Display filtering / naming
+│   ├── transfer/            # Native + jetton builders
+│   ├── crypto/              # Encryption, mnemonic, offline signing
+│   ├── network/             # TonAPI client, resilient RPC
+│   ├── services/            # WalletCore, MultiSend, discovery, …
+│   ├── config/              # Fees, known tokens, app wiring
+│   ├── App.tsx              # Shell + navigation
+│   └── main.tsx             # Providers bootstrap
+├── tests/                   # Vitest suites
+├── scripts/                 # Utility scripts
+├── .env.example
+├── DOCUMENTATION.md         # Extended internal docs
+└── package.json
+```
+
+---
+
+## Wallet versions
+
+```mermaid
+flowchart LR
+  subgraph Standard["Standard wallets"]
+    V3R1["V3R1 · 4 msgs"]
+    V3R2["V3R2 · 4 msgs"]
+    V4R2["V4R2 · plugins · recommended"]
+    V5R1["V5R1 · extensions · gasless path"]
+  end
+
+  subgraph Enterprise["Enterprise"]
+    HL["Highload V3 · up to 254 msgs · Query IDs"]
+  end
+
+  User((User)) --> Standard
+  User --> Enterprise
+```
+
+| Version | Max msgs / tx | Strength | Typical use |
+| --- | --- | --- | --- |
+| V3R1 | 4 | Simple | Basic transfers |
+| V3R2 | 4 | Gas efficiency | Everyday sends |
+| **V4R2** | 4 | Plugins | **Default choice** |
+| V5R1 | 4* | Extensions / gasless path | Advanced / sponsored flows |
+| **Highload V3** | **254** | Parallel Query-ID bursts | **Mass payouts / Bulk** |
+
+\* Effective batching for multi-send may use sequential W5 batches when Highload is not selected.
+
+---
+
+## Feature deep dive
+
+### Home — Tokens & Collectibles
+
+- **Tokens** — filtered jetton list (zero / dust / blacklist / dedupe by master address), ticker-first names, unit price + 24h change, hold balance, mini sparkline
+- **Collectibles** — NFT grid/list, detail sheet, transfer, Getgems / Tonviewer links, `.ton` domain enrichment
+
+### Bulk (Multi-Send)
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant UI as MultiSend UI
+  participant S as MultiSendService
+  participant W as Wallet (V5 / Highload)
+  participant C as TON
+
+  U->>UI: Add rows / CSV / unify amounts
+  UI->>UI: Validate addresses · resolve .ton
+  U->>UI: Confirm + password
+  UI->>S: Execute batch
+  alt Highload V3
+    S->>W: Parallel external msgs (Query IDs)
+  else V5 sequential
+    S->>W: Batches with seqno confirmations
+  end
+  W->>C: Broadcast
+  C-->>UI: Progress / per-row status
+```
+
+- Per-row coin picker (TON + discovered jettons)
+- Comment / amount unification
+- Pre-flight balance awareness and on-chain confirmation tracking
+
+### DEX swaps
+
+- Strict application layer around STON.fi quoting & execution
+- Destination / trust checks before signing
+- Recovery bootstrap for interrupted swap flows
+
+### TON Connect
+
+- Connect / disconnect sessions (e.g. Fragment)
+- `ton_addr` + device info + real `ton_proof` after password unlock
+- **Settings → Connected Apps** to list and revoke sessions
+- Highload-compatible connect payloads when that wallet type is active
+
+### Security model
+
+```mermaid
+flowchart TB
+  Mnemonic[24-word mnemonic] --> PBKDF2[PBKDF2 key derivation]
+  Password[User password] --> PBKDF2
+  PBKDF2 --> AES[AES-256-GCM vault in localStorage]
+  AES -->|Unlock| Keys[In-memory keys for session]
+  Keys --> Sign[Sign transfers · swaps · TC proofs]
+  Sign --> Forget[Keys cleared on lock / logout]
+```
+
+- Seed never sent to a server
+- Sensitive actions re-prompt for password where required
+- Prefer hardware / cold workflows for large treasuries; this app is a hot wallet UI
+
+---
+
+## UI map
+
+| Surface | Role |
+| --- | --- |
+| `LoginScreen` | Create / import / unlock |
+| `HomeTab` | Actions, Tokens ↔ Collectibles |
+| `ActivityTab` | Transaction history |
+| `BottomNavigation` | Wallet · Activity · **Bulk** · Settings |
+| `MultiSend/*` | Batch composer + progress |
+| `NftTab` / `NftDetailModal` | Collectibles & domains |
+| `TonConnect*Modal` | Connect & transaction requests |
+| `ConnectedAppsModal` | Session management |
+| `WalletModals` | Send, receive, swap, token detail, backup |
+
+---
+
+## Networks & APIs
+
+| Service | Purpose |
+| --- | --- |
+| TonAPI | Balances, jettons, NFTs, rates, events |
+| Toncenter | RPC broadcast / account state (strict paths) |
+| STON.fi | Swap quotes & routes |
+| Getgems / Tonviewer | External NFT / explorer links |
+
+Switch **Mainnet ↔ Testnet** in Settings. Testnet often lacks USD pricing; positive balances still display.
+
+---
+
+## Testing
+
 ```bash
 npm test
-```
-
-**Run tests in watch mode:**
-```bash
-npm run test:watch
-```
-
-**Type checking:**
-```bash
 npm run type-check
+npm run type-check:strict
+npm run build
 ```
+
+Coverage spans wallet descriptors, Highload helpers, transfer builders, swap validation, TON Connect payloads, NFT URL helpers, and token display filtering.
+
+---
+
+## Security notes
+
+- Never commit `.env` or seed phrases
+- Treat browser storage as **hot** — use dedicated accounts for large funds
+- Review Connected Apps regularly; disconnect unused dApps
+- API keys in `VITE_*` are visible to clients — rate-limit them
+
+---
+
+## Roadmap ideas
+
+- Deeper DeDust aggregation in the strict swap path
+- Richer historical sparklines from rates APIs
+- Hardware-wallet / extension packaging
+- Optional IndexedDB vault backends
+
+*(Contributions welcome — open an issue or PR.)*
+
+---
+
+## Documentation
+
+- [`.env.example`](./.env.example) — environment template  
+- [`DOCUMENTATION.md`](./DOCUMENTATION.md) — long-form internal documentation  
+
+---
+
+## Developer
+
+Questions, bugs, or collaboration:
+
+**Telegram:** [@openreason](https://t.me/openreason)
 
 ---
 
 ## License
 
-MIT License
+Distributed for use with this repository. See project files and commit history for licensing intent; add a `LICENSE` file if you publish a formal SPDX license.
 
-## References
+---
 
-- [@ton/ton SDK](https://github.com/ton-org/ton)
-- [Highload Wallet V3](https://github.com/ton-blockchain/highload-wallet-contract-v3)
-- [Wallet V5 Spec](https://docs.ton.org/standard/wallets/v5)
-- [TonAPI](https://tonapi.io)
-- [STON.fi](https://ston.fi)
-- [DeDust](https://dedust.io)
+<p align="center">
+  <sub>Built for TON · Highload-ready · Self-custodial</sub><br/>
+  <a href="https://t.me/openreason">@openreason</a>
+</p>
