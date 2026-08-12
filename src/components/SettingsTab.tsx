@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, ChevronRight, Moon, BellRing, Languages, Wallet, LogOut } from 'lucide-react';
+import { ShieldCheck, ChevronRight, Moon, BellRing, Languages, Wallet, LogOut, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface SettingsTabProps {
@@ -14,6 +14,8 @@ interface SettingsTabProps {
     setShowPhraseModal: (v: boolean) => void;
     onLogout: () => void;
     onWalletTypeClick: () => void;
+    network: 'mainnet' | 'testnet';
+    onNetworkChange: (n: 'mainnet' | 'testnet') => void;
 }
 
 function Toggle({ checked, onChange, darkMode }: { checked: boolean; onChange: () => void; darkMode: boolean }) {
@@ -60,12 +62,78 @@ function SettingsRow({ icon: Icon, label, sublabel, darkMode, onClick, trailing,
     );
 }
 
+/** Mainnet ↔ Testnet network switch pill */
+function NetworkSwitch({ network, onChange, darkMode, language }: {
+    network: 'mainnet' | 'testnet';
+    onChange: (n: 'mainnet' | 'testnet') => void;
+    darkMode: boolean;
+    language: string;
+}) {
+    const isTestnet = network === 'testnet';
+    return (
+        <div className={cn(
+            "flex items-center gap-1 p-1 rounded-xl ring-1",
+            darkMode ? "bg-white/[0.04] ring-white/10" : "bg-black/[0.03] ring-black/[0.06]"
+        )}>
+            <button
+                onClick={() => onChange('mainnet')}
+                className={cn(
+                    "text-[11px] font-bold px-3 py-1 rounded-lg transition-all",
+                    !isTestnet
+                        ? "bg-blue-500 text-white shadow-sm shadow-blue-500/30"
+                        : darkMode ? "text-gray-500 hover:text-gray-400" : "text-gray-400 hover:text-gray-600"
+                )}
+            >
+                {language === 'ar' ? 'رئيسية' : 'Mainnet'}
+            </button>
+            <button
+                onClick={() => onChange('testnet')}
+                className={cn(
+                    "text-[11px] font-bold px-3 py-1 rounded-lg transition-all",
+                    isTestnet
+                        ? "bg-amber-500 text-white shadow-sm shadow-amber-500/30"
+                        : darkMode ? "text-gray-500 hover:text-gray-400" : "text-gray-400 hover:text-gray-600"
+                )}
+            >
+                {language === 'ar' ? 'تجريبية' : 'Testnet'}
+            </button>
+        </div>
+    );
+}
+
 export default function SettingsTab({
     darkMode, setDarkMode, language, setLanguage, walletType,
-    notifications, setNotifications, setShowBackupModal, setShowPhraseModal, onLogout, onWalletTypeClick
+    notifications, setNotifications, setShowBackupModal, setShowPhraseModal,
+    onLogout, onWalletTypeClick, network, onNetworkChange
 }: SettingsTabProps) {
     return (
         <div className="px-5 pb-6 pt-3">
+            {/* Network */}
+            <p className={cn("text-[11px] font-bold uppercase tracking-wider mb-2 px-1", darkMode ? "text-blue-400/50" : "text-gray-400")}>
+                {language === 'ar' ? 'الشبكة' : 'Network'}
+            </p>
+            <div className="glass-card overflow-hidden mb-5">
+                <SettingsRow
+                    icon={Globe}
+                    label={language === 'ar' ? 'الشبكة النشطة' : 'Active Network'}
+                    sublabel={
+                        network === 'testnet'
+                            ? (language === 'ar' ? '⚠️ وضع الاختبار — لا قيمة حقيقية' : '⚠️ Test mode — no real value')
+                            : (language === 'ar' ? 'الشبكة الرئيسية' : 'Production network')
+                    }
+                    darkMode={darkMode}
+                    isLast
+                    trailing={
+                        <NetworkSwitch
+                            network={network}
+                            onChange={onNetworkChange}
+                            darkMode={darkMode}
+                            language={language}
+                        />
+                    }
+                />
+            </div>
+
             {/* Security */}
             <p className={cn("text-[11px] font-bold uppercase tracking-wider mb-2 px-1", darkMode ? "text-blue-400/50" : "text-gray-400")}>
                 {language === 'ar' ? 'الأمان' : 'Security'}

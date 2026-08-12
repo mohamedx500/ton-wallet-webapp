@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { mnemonicValidate } from '@ton/crypto';
+import { Address } from '@ton/core';
 import { WalletService } from '../services/WalletService';
 // @ts-ignore
 import { SecurityService } from '../services/SecurityService';
@@ -11,7 +12,7 @@ import { networkService, ConnectionQuality } from '../services/NetworkService';
 
 interface WalletContextType {
     isLoggedIn: boolean;
-    hasPassword: boolean; // Computed from accounts existence, or specific active account
+    hasPassword: boolean;
     walletAddress: string | null;
     balance: string;
     transactions: any[];
@@ -21,10 +22,13 @@ interface WalletContextType {
     totalBalanceUSDT: string;
     accounts: WalletAccount[];
     activeAccount: WalletAccount | null;
+    /** Active network — 'mainnet' | 'testnet'. Persisted in localStorage. */
+    network: 'mainnet' | 'testnet';
+    setNetwork: (n: 'mainnet' | 'testnet') => void;
 
     // Actions
-    createWallet: (password: string, mnemonic?: string[], name?: string) => Promise<string[]>; // Added name
-    importWallet: (mnemonic: string[], password: string, name?: string) => Promise<void>; // Added name
+    createWallet: (password: string, mnemonic?: string[], name?: string) => Promise<string[]>;
+    importWallet: (mnemonic: string[], password: string, name?: string) => Promise<void>;
     unlockWallet: (password: string) => Promise<boolean>;
     logout: () => void;
     sendTransaction: (recipient: string, amount: string, password: string, comment?: string, token?: any) => Promise<any>;
@@ -59,9 +63,43 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const [balance, setBalance] = useState('0.00');
     const [transactions, setTxs] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [walletType, setWalletType] = useState('v4r2'); // From active account
+    const [walletType, setWalletType] = useState('v4r2');
     const [tokens, setTokens] = useState<any[]>([]);
     const [totalBalanceUSDT, setTotalBalanceUSDT] = useState('0.00');
+    const [network, setNetworkState] = useState<'mainnet' | 'testnet'>(() => {
+        const stored = localStorage.getItem('ton-wallet:network');
+        return (stored === 'testnet' ? 'testnet' : 'mainnet');
+    });
+
+    const setNetwork = (n: 'mainnet' | 'testnet') => {
+        localStorage.setItem('ton-wallet:network', n);
+        setNetworkState(n);
+
+        // Convert the current wallet address string to the new network's format
+        if (walletAddress) {
+            try {
+                const addr = Address.parse(walletAddress);
+                setWalletAddress(addr.toString({ testOnly: n === 'testnet', bounceable: true }));
+            } catch (e) {
+                console.warn('Failed to convert address format for network switch', e);
+            }
+        }
+
+        // Clear data and force refresh
+        setBalance('0.00');
+        setTxs([]);
+        setTokens([]);
+        setTotalBalanceUSDT('0.00');
+        setLastRefresh(0); // Reset cooldown
+        // We defer refreshData call to a useEffect depending on network
+    };
+
+    // Auto-refresh when network changes
+    useEffect(() => {
+        if (isLoggedIn && walletAddress) {
+            refreshData();
+        }
+    }, [network, walletAddress, isLoggedIn]);
 
     const normalizeMnemonic = (words: string[]): string[] => {
         return words
@@ -116,11 +154,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             const mnemonic = normalizeMnemonic(seedStr.split(' '));
 
             // Send
+            const isTestnet = network === 'testnet';
             let res;
             if (token && token.symbol !== 'Gram') {
                 if (!token.walletAddress) throw new Error(`Missing wallet address for ${token.symbol}`);
 
-                console.log(`Sending Jetton ${token.symbol} (${token.walletAddress}) -> ${recipient}`);
+                console.log(`Sending Jetton ${token.symbol} (${token.walletAddress}) -> ${recipient} [${network}]`);
 
                 res = await walletService.sendJettonTransfer(
                     mnemonic,
@@ -129,10 +168,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                     recipient,
                     Number(amount),
                     token.decimals || 6,
-                    comment || ''
+                    comment || '',
+                    isTestnet
                 );
             } else {
-                res = await walletService.sendTransaction(mnemonic, activeAccount.type, recipient, amount, comment || '');
+                res = await walletService.sendTransaction(mnemonic, activeAccount.type, recipient, amount, comment || '', isTestnet);
             }
 
             // Refresh balance multiple times to catch confirmation
@@ -180,7 +220,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         isFetching.current = true;
 
         try {
-            // 1. Get Rates
+            const isTestnet = network === 'testnet';
+
+            // 1. Get Rates (always from mainnet — testnet has no USD prices)
             const rates = await tonApiService.getRates();
             const tonPrice = rates.ton.price;
             const tonDiff = rates.ton.diff;
@@ -188,12 +230,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             const usdtDiff = rates.usdt.diff;
 
             // 2. Get TON Balance
-            const balNano = await tonApiService.getBalance(walletAddress);
+            const balNano = await tonApiService.getBalance(walletAddress, isTestnet);
             const balTon = balNano / 1e9;
             setBalance(balTon.toFixed(2));
 
             // 3. Get Jettons
-            const jettons = await tonApiService.getJettons(walletAddress);
+            const jettons = await tonApiService.getJettons(walletAddress, isTestnet);
 
             // 4. Build Tokens List
             const tokenList: any[] = [];
@@ -273,7 +315,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             setTotalBalanceUSDT(totalUsd.toFixed(2));
 
             // 5. Get Transactions
-            const txs = await tonApiService.getTransactions(walletAddress);
+            const txs = await tonApiService.getTransactions(walletAddress, isTestnet);
             const formattedTxs = txs.map((tx: any) => {
                 // Use existing type if valid (from TonApiService update), otherwise map legacy types
                 let type = tx.type;
@@ -420,7 +462,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             const encrypted = await securityService.encryptData(seedStr, password);
 
             // Get Address
-            const wallet = await walletService.importWallet(actualMnemonic, 'v4r2');
+            const wallet = await walletService.importWallet(actualMnemonic, 'v4r2', network === 'testnet');
 
             // Add to Manager - store full security data (hash + salt)
             const newAccount = accountManager.addAccount({
@@ -470,7 +512,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             }
 
             const type = activeAccount.type;
-            const wallet = await walletService.importWallet(mnemonic, type);
+            const wallet = await walletService.importWallet(mnemonic, type, network === 'testnet');
             setWalletAddress(wallet.address);
 
             // Keep stored address synced with derived address
@@ -521,7 +563,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             const mnemonic = await getDecryptedSeed(password); // Verifies pwd
 
             // Re-import
-            const wallet = await walletService.importWallet(mnemonic, newType);
+            const wallet = await walletService.importWallet(mnemonic, newType, network === 'testnet');
 
             // Update Account
             accountManager.updateAccount(activeAccount.id, { type: newType, address: wallet.address });
@@ -626,6 +668,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             totalBalanceUSDT,
             accounts,
             activeAccount,
+            network,
+            setNetwork,
             createWallet,
             importWallet,
             unlockWallet,

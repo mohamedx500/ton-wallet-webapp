@@ -444,6 +444,13 @@ export class WalletService {
                 }));
                 break;
 
+            case 'v5r1':
+                wallet = client.open(WalletContractV5R1.create({
+                    publicKey: keyPair.publicKey,
+                    workchain: 0,
+                }));
+                break;
+
             case 'highload-v3':
                 // Highload V3 uses different API
                 return await this.sendHighloadTransaction(mnemonic, recipient, amount, comment, testnet);
@@ -526,6 +533,13 @@ export class WalletService {
                     publicKey: keyPair.publicKey,
                     workchain: 0,
                     walletId: STANDARD_V4R2_WALLET_ID,
+                }));
+                break;
+
+            case 'v5r1':
+                wallet = client.open(WalletContractV5R1.create({
+                    publicKey: keyPair.publicKey,
+                    workchain: 0,
                 }));
                 break;
 
@@ -873,6 +887,13 @@ export class WalletService {
                     publicKey: keyPair.publicKey,
                     workchain: 0,
                     walletId: STANDARD_V4R2_WALLET_ID,
+                }));
+                break;
+
+            case 'v5r1':
+                wallet = client.open(WalletContractV5R1.create({
+                    publicKey: keyPair.publicKey,
+                    workchain: 0,
                 }));
                 break;
 

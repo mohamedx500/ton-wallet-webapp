@@ -17,6 +17,7 @@
 
 import { Address, Cell, toNano } from '@ton/core';
 import { TonClient } from '@ton/ton';
+// @ts-ignore — WalletService is a .js legacy file
 import { WalletService } from '../WalletService.js';
 
 // ============================================================================

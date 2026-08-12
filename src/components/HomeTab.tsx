@@ -1,6 +1,5 @@
 import React from 'react';
-import { ArrowUp, ArrowDown, ArrowLeftRight, Users } from 'lucide-react';
-import { Send, Download, RefreshCw } from 'lucide-react';
+import { ArrowUp, Download, RefreshCw, Users, ScanLine, ArrowRightLeft } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 
@@ -11,6 +10,7 @@ interface HomeTabProps {
     setShowReceiveModal: (v: boolean) => void;
     setShowSwapModal: (v: boolean) => void;
     onMultiSendClick: () => void;
+    onScanQr?: () => void;
     tokens: any[];
     onTokenClick: (token: any) => void;
 }
@@ -18,8 +18,9 @@ interface HomeTabProps {
 const actions = [
     { id: 'send', icon: ArrowUp, labelEn: 'Send', labelAr: 'إرسال', color: 'blue' },
     { id: 'receive', icon: Download, labelEn: 'Receive', labelAr: 'استلام', color: 'green' },
-    { id: 'swap', icon: RefreshCw, labelEn: 'Swap', labelAr: 'تبديل', color: 'amber' },
-    { id: 'multisend', icon: Users, labelEn: 'Multi-Send', labelAr: 'إرسال متعدد', color: 'violet' },
+    { id: 'swap', icon: ArrowRightLeft, labelEn: 'Swap', labelAr: 'تبديل', color: 'amber' },
+    { id: 'scan', icon: ScanLine, labelEn: 'Scan', labelAr: 'مسح', color: 'cyan' },
+    { id: 'multisend', icon: Users, labelEn: 'Multi', labelAr: 'متعدد', color: 'violet' },
 ];
 
 const actionColors: Record<string, { light: string; dark: string }> = {
@@ -30,6 +31,10 @@ const actionColors: Record<string, { light: string; dark: string }> = {
     green: {
         light: 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20',
         dark: 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20',
+    },
+    cyan: {
+        light: 'bg-cyan-500 text-white shadow-md shadow-cyan-500/20',
+        dark: 'bg-cyan-500/10 text-cyan-400 ring-1 ring-cyan-500/20',
     },
     amber: {
         light: 'bg-amber-500 text-white shadow-md shadow-amber-500/20',
@@ -63,11 +68,12 @@ function TokenSkeleton({ darkMode }: { darkMode: boolean }) {
     );
 }
 
-export default function HomeTab({ darkMode, language, setShowSendModal, setShowReceiveModal, setShowSwapModal, onMultiSendClick, tokens, onTokenClick }: HomeTabProps) {
+export default function HomeTab({ darkMode, language, setShowSendModal, setShowReceiveModal, setShowSwapModal, onMultiSendClick, onScanQr, tokens, onTokenClick }: HomeTabProps) {
     const actionHandlers: Record<string, () => void> = {
         send: () => setShowSendModal(true),
         receive: () => setShowReceiveModal(true),
         swap: () => setShowSwapModal(true),
+        scan: () => onScanQr?.(),
         multisend: onMultiSendClick,
     };
 
@@ -75,23 +81,23 @@ export default function HomeTab({ darkMode, language, setShowSendModal, setShowR
         <>
             {/* Action Buttons - in a glass card */}
             <div className="px-5 pt-5 pb-3">
-                <div className={cn("glass-card p-3 grid grid-cols-4 gap-2")}>
+                <div className={cn("glass-card p-2.5 grid grid-cols-5 gap-1.5")}>
                     {actions.map(({ id, icon: Icon, labelEn, labelAr, color }) => (
                         <button
                             key={id}
                             onClick={actionHandlers[id]}
                             className={cn(
-                                "flex flex-col items-center justify-center py-3 rounded-xl transition-all active:scale-95",
+                                "flex flex-col items-center justify-center py-2 rounded-xl transition-all active:scale-95",
                                 darkMode ? "hover:bg-white/5" : "hover:bg-black/[0.03]"
                             )}
                         >
                             <div className={cn(
-                                "w-12 h-12 rounded-2xl flex items-center justify-center mb-1.5",
+                                "w-11 h-11 rounded-[14px] flex items-center justify-center mb-1.5",
                                 darkMode ? actionColors[color].dark : actionColors[color].light
                             )}>
-                                <Icon size={22} strokeWidth={2} />
+                                <Icon size={20} strokeWidth={2} />
                             </div>
-                            <span className={cn("text-xs font-semibold", darkMode ? "text-gray-400" : "text-gray-600")}>
+                            <span className={cn("text-[10px] font-semibold tracking-tight", darkMode ? "text-gray-400" : "text-gray-600")}>
                                 {language === 'ar' ? labelAr : labelEn}
                             </span>
                         </button>

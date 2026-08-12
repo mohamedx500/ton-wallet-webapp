@@ -28,3 +28,5 @@ PLANS
 require 
 .env
 .env.*
+.workbuddy-ai/
+scratch.ts

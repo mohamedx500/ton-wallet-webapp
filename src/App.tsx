@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useWallet } from './context/WalletContext';
 import LoginScreen from './components/LoginScreen';
 import WalletHeader from './components/WalletHeader';
@@ -6,16 +6,30 @@ import BottomNavigation from './components/BottomNavigation';
 import HomeTab from './components/HomeTab';
 import ActivityTab from './components/ActivityTab';
 import SettingsTab from './components/SettingsTab';
+import NftTab from './components/NftTab';
+import NftSendModal from './components/NftSendModal';
+import QrScanModal from './components/QrScanModal';
+import TonConnectRequestModal from './components/TonConnectRequestModal';
 import { SendModal, ReceiveModal, BackupModal, PhraseModal, TransactionModal, PasswordPromptModal, SelectWalletTypeModal, TokenDetailsModal, PrivateKeyModal, SwapModal } from './components/WalletModals';
 import { AccountsModal, AddAccountModal } from './components/AccountModals';
 import NetworkBanner from './components/NetworkBanner';
 import MultiSendModal from './components/MultiSend/MultiSendModal';
 import { useMultiSend } from './context/MultiSendContext';
+import { StrictSwapRecoveryBootstrap } from './StrictSwapRecoveryBootstrap';
+import { useStrictSwapRuntime } from './StrictSwapProvider';
+import { TonConnectWalletService } from './tonconnect/wallet/TonConnectWalletService';
+import type { TonConnectPendingRequest } from './tonconnect/wallet/TonConnectWalletService';
+import type { NftItem } from './nft/types';
+import type { TonConnectLink } from './tonconnect/wallet/types';
+import { PasswordConfirmedTransactionExecutor } from './tonconnect/PasswordConfirmedTransactionExecutor';
+import { TransferExecutor } from './transfer/TransferExecutor';
+import { Cell } from '@ton/core';
 
 export default function TonWallet() {
     // Context State
-    const { isLoggedIn, balance, transactions, walletAddress, sendTransaction, logout, isLoading, walletType, getDecryptedSeed, getPrivateKey, switchWalletType, tokens, totalBalanceUSDT, accounts, activeAccount, selectAccount, addAccount, renameAccount, deleteAccount, refreshData } = useWallet();
+    const { isLoggedIn, transactions, walletAddress, sendTransaction, logout, isLoading, walletType, getDecryptedSeed, getPrivateKey, switchWalletType, tokens, totalBalanceUSDT, accounts, activeAccount, selectAccount, addAccount, renameAccount, deleteAccount, refreshData, network, setNetwork } = useWallet();
     const { openModal: openMultiSend } = useMultiSend();
+    const strictSwapRuntime = useStrictSwapRuntime();
 
     // UI State
     const [activeTab, setActiveTab] = useState('home');
@@ -34,9 +48,8 @@ export default function TonWallet() {
 
     // Transaction & Security Flow State
     const [showPasswordModal, setShowPasswordModal] = useState(false);
-    const [passwordAction, setPasswordAction] = useState<'transaction' | 'viewSeed' | 'switchType' | 'viewPrivateKey' | 'swap' | null>(null);
+    const [passwordAction, setPasswordAction] = useState<'transaction' | 'viewSeed' | 'switchType' | 'viewPrivateKey' | null>(null);
     const [pendingTx, setPendingTx] = useState<{ recipient: string; amount: string; comment?: string; token?: any } | null>(null);
-    const [pendingSwap, setPendingSwap] = useState<{ fromToken: string; toToken: string; amount: string; minOutput: string; provider: string; quote: any } | null>(null);
     const [txError, setTxError] = useState('');
     const [decryptedSeed, setDecryptedSeed] = useState<string[]>([]);
     const [isSeedLoading, setIsSeedLoading] = useState(false);
@@ -53,6 +66,53 @@ export default function TonWallet() {
     const [showTokenModal, setShowTokenModal] = useState(false);
     const [showPrivateKeyModal, setShowPrivateKeyModal] = useState(false);
     const [privateKey, setPrivateKey] = useState('');
+
+    // ── NFT ──────────────────────────────────────────────────────────────────
+    const [selectedNft, setSelectedNft] = useState<NftItem | null>(null);
+    const [showNftSendModal, setShowNftSendModal] = useState(false);
+
+    // ── QR Scanner ───────────────────────────────────────────────────────────
+    const [showQrScan, setShowQrScan] = useState(false);
+
+    // ── TON Connect ──────────────────────────────────────────────────────────
+    const tcServiceRef = useRef<TonConnectWalletService | null>(null);
+    const [pendingTcRequest, setPendingTcRequest] = useState<TonConnectPendingRequest | null>(null);
+    const [showTcModal, setShowTcModal] = useState(false);
+
+    // Initialize TC service whenever network changes
+    useEffect(() => {
+        const svc = new TonConnectWalletService({ network });
+        svc.setRequestHandler((pending) => {
+            setPendingTcRequest(pending);
+            setShowTcModal(true);
+        });
+        tcServiceRef.current = svc;
+    }, [network]);
+
+    // Handle a scanned TON Connect QR link
+    const handleTonConnectLink = useCallback((link: TonConnectLink) => {
+        const svc = tcServiceRef.current;
+        if (!svc || !walletAddress || !activeAccount) return;
+        // proofAuthority stub — real impl would use the wallet's signing key
+        const proofAuthority = {
+            walletAddress: walletAddress,
+            sign: async (_hash: Uint8Array) => new Uint8Array(64),
+        };
+        const walletDesc: any = activeAccount.type === 'highload-v3' ? {
+            kind: 'highload-v3',
+            version: 'highload-v3',
+            address: activeAccount.address,
+            subwalletId: 4269,
+            timeoutSeconds: 300,
+        } : {
+            kind: 'standard',
+            version: activeAccount.type,
+            address: activeAccount.address,
+            subwalletId: 698983191,
+        };
+        svc.handleConnectLink(link, activeAccount.id, walletAddress, walletDesc, proofAuthority)
+            .catch((err: unknown) => console.error('[TON Connect]', err));
+    }, [walletAddress, activeAccount]);
 
     const handleCopy = () => {
         // Actually copy the wallet address to clipboard
@@ -77,14 +137,6 @@ export default function TonWallet() {
         setPendingTx({ recipient: to, amount: amt, comment: comment, token: token });
         setShowSendModal(false);
         setPasswordAction('transaction');
-        setShowPasswordModal(true);
-    };
-
-    // Swap Logic
-    const handleSwapInitiated = (swapData: any) => {
-        setPendingSwap(swapData);
-        setShowSwapModal(false);
-        setPasswordAction('swap');
         setShowPasswordModal(true);
     };
 
@@ -167,151 +219,6 @@ export default function TonWallet() {
             } finally {
                 setIsSeedLoading(false);
             }
-        } else if (passwordAction === 'swap') {
-            if (!pendingSwap) return;
-            setIsSeedLoading(true);
-            try {
-                // Import the new TypeScript SwapService with proper gas fees
-                const { swapService } = await import('./services/SwapService');
-
-                // Build swap transaction using the unified method
-                // This now uses correct gas fees: 0.1 TON instead of 0.3 TON
-                const swapTx = await swapService.buildSwapTransaction(
-                    pendingSwap.provider as 'stonfi' | 'dedust',
-                    pendingSwap.quote,
-                    walletAddress || ''
-                );
-
-                console.log('[Swap] Built transaction:', {
-                    type: swapTx.type,
-                    to: swapTx.to,
-                    value: swapTx.value,
-                    provider: pendingSwap.provider
-                });
-
-                // Execute the swap based on transaction type
-                if (swapTx.type === 'jetton_transfer') {
-                    const { beginCell, Address, Cell } = await import('@ton/ton');
-                    
-                    const userJettonWallet = tokens.find(t => 
-                        t.symbol === pendingSwap.fromToken || 
-                        (pendingSwap.fromToken === 'USDT' && t.symbol === 'USD₮') || 
-                        (pendingSwap.fromToken === 'USD₮' && t.symbol === 'USDT')
-                    )?.walletAddress;
-
-                    if (!userJettonWallet) {
-                        throw new Error(`Could not find your jetton wallet for ${pendingSwap.fromToken}`);
-                    }
-
-                    const forwardPayloadCell = Cell.fromBase64(swapTx.forwardPayload!);
-                    
-                    const body = beginCell()
-                        .storeUint(0xf8a7ea5, 32) // op::transfer
-                        .storeUint(0, 64) // query_id
-                        .storeCoins(BigInt(swapTx.amount!))
-                        .storeAddress(Address.parse(swapTx.destination!))
-                        .storeAddress(Address.parse(walletAddress || '')) // response_destination
-                        .storeBit(0) // custom_payload
-                        .storeCoins(BigInt(swapTx.forwardAmount!))
-                        .storeBit(1) // forward_payload as reference
-                        .storeRef(forwardPayloadCell)
-                        .endCell();
-                        
-                    // Convert gasAmount from nano to TON
-                    const gasNano = BigInt(swapTx.gasAmount!);
-                    const wholeTon = gasNano / BigInt(1e9);
-                    const remainder = gasNano % BigInt(1e9);
-                    const decimalPart = remainder.toString().padStart(9, '0');
-                    const amountInTon = `${wholeTon}.${decimalPart}`.replace(/\.?0+$/, '') || '0';
-
-                    // Get mnemonic for the transaction
-                    const mnemonic = await getDecryptedSeed(password);
-
-                    // Import WalletService and send transaction WITH the swap payload
-                    const { WalletService } = await import('./services/WalletService');
-                    const walletService = new WalletService();
-
-                    await walletService.sendTransactionWithPayload(
-                        mnemonic,
-                        walletType,
-                        userJettonWallet, // recipient is the user's jetton wallet
-                        amountInTon,      // amount is the gas attached to the transaction
-                        body,             // body is the jetton transfer payload
-                        false
-                    );
-                    
-                    alert(`Swap initiated! ✅\n\n${pendingSwap.amount} ${pendingSwap.fromToken} → ${pendingSwap.quote.outputAmount} ${pendingSwap.toToken}\n\nProvider: ${pendingSwap.provider === 'stonfi' ? 'STON.fi' : 'DeDust'}\n\nPlease check your transaction history in a few minutes.`);
-
-                    // Trigger multiple refreshes to catch the transaction confirmation
-                    setTimeout(() => refreshData(), 2000);  // 2 seconds
-                    setTimeout(() => refreshData(), 5000);  // 5 seconds
-                    setTimeout(() => refreshData(), 10000); // 10 seconds
-                    setTimeout(() => refreshData(), 20000); // 20 seconds
-                } else if (swapTx.to && swapTx.value && swapTx.body) {
-                    // TON -> Jetton swap - send TON to router WITH swap payload
-                    // Convert nanoTON string to TON with proper decimal handling
-                    const valueInNano = BigInt(swapTx.value);
-                    const wholeTon = valueInNano / BigInt(1e9);
-                    const remainder = valueInNano % BigInt(1e9);
-                    const decimalPart = remainder.toString().padStart(9, '0');
-                    const amountInTon = `${wholeTon}.${decimalPart}`.replace(/\.?0+$/, '') || '0';
-
-                    console.log('[Swap] Sending swap transaction to DEX router:', {
-                        to: swapTx.to,
-                        valueNano: swapTx.value,
-                        valueTON: amountInTon,
-                        swapAmount: pendingSwap.amount,
-                        expectedOutput: pendingSwap.quote.outputAmount,
-                        hasPayload: !!swapTx.body
-                    });
-
-                    if (parseFloat(amountInTon) <= 0) {
-                        throw new Error('Invalid swap amount');
-                    }
-
-                    // Get mnemonic for the transaction
-                    const mnemonic = await getDecryptedSeed(password);
-
-                    // Import WalletService and send transaction WITH the swap payload
-                    const { WalletService } = await import('./services/WalletService');
-                    const walletService = new WalletService();
-
-                    // Send transaction with the swap payload (Cell body)
-                    const { Cell } = await import('@ton/ton');
-                    const bodyCell = typeof swapTx.body === 'string' ? Cell.fromBase64(swapTx.body) : swapTx.body;
-                    
-                    await walletService.sendTransactionWithPayload(
-                        mnemonic,
-                        walletType,
-                        swapTx.to,
-                        amountInTon,
-                        bodyCell, // The swap payload Cell - THIS IS CRITICAL!
-                        false // mainnet
-                    );
-
-                    alert(`Swap initiated! ✅\n\n${pendingSwap.amount} ${pendingSwap.fromToken} → ${pendingSwap.quote.outputAmount} ${pendingSwap.toToken}\n\nProvider: ${pendingSwap.provider === 'stonfi' ? 'STON.fi' : 'DeDust'}\n\nPlease check your transaction history in a few minutes.`);
-
-                    // Trigger multiple refreshes to catch the transaction confirmation
-                    setTimeout(() => refreshData(), 2000);  // 2 seconds
-                    setTimeout(() => refreshData(), 5000);  // 5 seconds
-                    setTimeout(() => refreshData(), 10000); // 10 seconds
-                    setTimeout(() => refreshData(), 20000); // 20 seconds
-                } else if (swapTx.to && swapTx.value) {
-                    // Fallback: simple transfer without payload (shouldn't happen for swaps)
-                    throw new Error('Swap transaction missing payload - contact support');
-                } else {
-                    throw new Error('Failed to build swap transaction - missing address or value');
-                }
-
-                setShowPasswordModal(false);
-                setPendingSwap(null);
-                setPasswordAction(null);
-            } catch (e: any) {
-                console.error('[Swap] Error:', e);
-                setTxError(e.message || 'Swap failed');
-            } finally {
-                setIsSeedLoading(false);
-            }
         }
     };
 
@@ -323,8 +230,16 @@ export default function TonWallet() {
 
     return (
         <div className={`min-h-screen ${darkMode ? 'dark bg-[hsl(224,20%,5%)]' : 'bg-gradient-to-br from-slate-50 via-blue-50/40 to-indigo-50/30'} p-4 flex items-center justify-center`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            {activeAccount?.address && walletAddress && (
+                <StrictSwapRecoveryBootstrap
+                    runtime={strictSwapRuntime}
+                    accountId={activeAccount.id}
+                    accountAddress={activeAccount.address}
+                    walletAddress={walletAddress}
+                />
+            )}
             {/* Network Status Banner */}
-            <NetworkBanner darkMode={darkMode} />
+            <NetworkBanner darkMode={darkMode} network={network} />
 
             <div className={`w-full max-w-md ${darkMode ? 'bg-[hsl(228,18%,7%)] ring-1 ring-white/[0.06] shadow-[0_0_60px_-15px_rgba(0,0,0,0.5)]' : 'bg-white/80 backdrop-blur-xl ring-1 ring-black/[0.08] shadow-2xl'} rounded-3xl overflow-hidden flex flex-col h-[85vh] relative`}>
                 <WalletHeader
@@ -349,6 +264,7 @@ export default function TonWallet() {
                             setShowReceiveModal={setShowReceiveModal}
                             setShowSwapModal={setShowSwapModal}
                             onMultiSendClick={openMultiSend}
+                            onScanQr={() => setShowQrScan(true)}
                             tokens={tokens}
                             onTokenClick={(token) => {
                                 setSelectedToken(token);
@@ -368,6 +284,19 @@ export default function TonWallet() {
                         />
                     )}
 
+                    {activeTab === 'collectibles' && (
+                        <NftTab
+                            darkMode={darkMode}
+                            language={language}
+                            walletAddress={walletAddress ?? ''}
+                            onRequestFetch={async (address, signal) => {
+                                const { NftService } = await import('./nft/NftService');
+                                const svc = new NftService({ network });
+                                return svc.fetchAll(address, { signal });
+                            }}
+                        />
+                    )}
+
                     {activeTab === 'settings' && (
                         <SettingsTab
                             darkMode={darkMode}
@@ -384,6 +313,8 @@ export default function TonWallet() {
                                 setActiveTab('home');
                             }}
                             onWalletTypeClick={() => setShowWalletTypeModal(true)}
+                            network={network}
+                            onNetworkChange={setNetwork}
                         />
                     )}
                 </div>
@@ -419,8 +350,12 @@ export default function TonWallet() {
                     darkMode={darkMode}
                     language={language}
                     walletAddress={walletAddress || ''}
+                    walletType={walletType}
+                    accountId={activeAccount?.id ?? null}
+                    activeAccount={activeAccount as unknown}
                     tokens={tokens}
-                    onSwapInitiated={handleSwapInitiated}
+                    onTerminalRefresh={refreshData}
+                    appNetwork={network}
                 />
                 <BackupModal
                     isOpen={showBackupModal}
@@ -515,6 +450,150 @@ export default function TonWallet() {
                 />
                 {/* Multi-Send Modal */}
                 <MultiSendModal darkMode={darkMode} language={language} />
+
+                {/* ── NFT Send Modal ───────────────────────────────────────── */}
+                <NftSendModal
+                    isOpen={showNftSendModal}
+                    item={selectedNft}
+                    onClose={() => { setShowNftSendModal(false); setSelectedNft(null); }}
+                    darkMode={darkMode}
+                    language={language}
+                    ownerAddress={walletAddress ?? ''}
+                    onSend={async ({ item: _item, recipient, comment: _comment, password: _pw }) => {
+                        if (strictSwapRuntime.status !== 'ready') {
+                            throw new Error("Secure runtime not available");
+                        }
+                        const executor = new TransferExecutor({
+                            network,
+                            decryptor: {
+                                decrypt: async (enc: any, pw: string) => {
+                                    return (await getDecryptedSeed(pw)).join(' ');
+                                }
+                            },
+                            walletCoordinatorFactory: strictSwapRuntime.status === 'ready' ? strictSwapRuntime.graph.walletCoordinatorFactory : ({} as any),
+                            signerClock: () => Math.floor(Date.now() / 1000)
+                        });
+
+                        await executor.send({
+                            kind: 'nft',
+                            network,
+                            nftAddress: _item.address,
+                            recipient,
+                            responseDestination: activeAccount!.address,
+                            forwardAmount: 50000000n, // 0.05 TON
+                            attachedTon: 70000000n, // 0.07 TON
+                            forwardPayload: _comment || '',
+                            purpose: `Transfer NFT ${_item.metadata?.name || 'NFT'}`
+                        } as any, {
+                            address: activeAccount!.address,
+                            wallet: activeAccount!.type === 'highload-v3' ? {
+                                kind: 'highload-v3',
+                                version: 'highload-v3',
+                                address: activeAccount!.address,
+                                subwalletId: 4269,
+                                timeoutSeconds: 300,
+                            } : {
+                                kind: 'standard',
+                                version: activeAccount!.type as any,
+                                address: activeAccount!.address,
+                                subwalletId: 698983191,
+                            } as any,
+                            encryptedMnemonic: activeAccount!.encryptedSeed as any,
+                        }, _pw);
+                    }}
+                />
+
+                {/* ── QR Scanner Modal ─────────────────────────────────────── */}
+                <QrScanModal
+                    isOpen={showQrScan}
+                    onClose={() => setShowQrScan(false)}
+                    onTonConnect={handleTonConnectLink}
+                    onTransfer={(address, amount, comment) => {
+                        setShowQrScan(false);
+                        setShowSendModal(true);
+                        // Pre-fill will be handled by SendModal via URL state in a future slice
+                        console.info('[QR] Transfer to', address, amount, comment);
+                    }}
+                    onAddress={(address) => {
+                        setShowQrScan(false);
+                        setShowSendModal(true);
+                        console.info('[QR] Address', address);
+                    }}
+                    darkMode={darkMode}
+                    language={language}
+                />
+
+                {/* ── TON Connect Request Modal ────────────────────────────── */}
+                <TonConnectRequestModal
+                    isOpen={showTcModal}
+                    pending={pendingTcRequest}
+                    onClose={() => { setShowTcModal(false); setPendingTcRequest(null); }}
+                    darkMode={darkMode}
+                    language={language}
+                    onApprove={async (pending, password) => {
+                        const first = pending.request.params[0];
+                        if (!first) return undefined;
+
+                        const parsed = JSON.parse(first) as { messages?: Array<{ address: string; amount: string; payload?: string; stateInit?: string }>; valid_until?: number };
+                        const msgs = parsed.messages ?? [];
+
+                        if (strictSwapRuntime.status !== 'ready') {
+                            throw new Error("Secure runtime not available");
+                        }
+
+                        const graph = strictSwapRuntime.status === 'ready' ? strictSwapRuntime.graph : ({} as any);
+
+                        // Fake a decryptor using the app's standard password-based key service
+                        // We extract this from useWallet's decrypted seed logic
+                        const executor = new PasswordConfirmedTransactionExecutor({
+                            network,
+                            decryptor: {
+                                decrypt: async (enc: any, pw: string) => {
+                                    // Hack: use the legacy decryption via useWallet indirectly or provide a stub
+                                    // In a real app we'd inject the SecurityService directly.
+                                    return (await getDecryptedSeed(pw)).join(' ');
+                                }
+                            },
+                            walletCoordinatorFactory: graph.walletCoordinatorFactory,
+                            signerClock: () => Math.floor(Date.now() / 1000)
+                        });
+
+                        const res = await executor.execute({
+                            transaction: {
+                                network,
+                                wallet: pending.session.walletDescriptor,
+                                messages: msgs.map(msg => ({
+                                    to: msg.address,
+                                    value: BigInt(msg.amount),
+                                    bounce: true,
+                                    purpose: 'TON Connect Transaction',
+                                    body: msg.payload ? Cell.fromBase64(msg.payload) : undefined
+                                })),
+                                validUntilUnix: parsed.valid_until ?? (Math.floor(Date.now() / 1000) + 300),
+                                correlationId: crypto.randomUUID(),
+                            },
+                            account: {
+                                address: pending.session.accountAddress,
+                                wallet: activeAccount!.type === 'highload-v3' ? {
+                                    kind: 'highload-v3',
+                                    version: 'highload-v3',
+                                    address: activeAccount!.address,
+                                    subwalletId: 4269,
+                                    timeoutSeconds: 300,
+                                } : {
+                                    kind: 'standard',
+                                    version: activeAccount!.type as any,
+                                    address: activeAccount!.address,
+                                    subwalletId: 698983191,
+                                } as any,
+                                encryptedMnemonic: activeAccount!.encryptedSeed as any,
+                            },
+                            password
+                        });
+
+                        return res.txHash ?? undefined;
+                    }}
+                />
             </div>
         </div>
     );

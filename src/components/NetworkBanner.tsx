@@ -3,6 +3,7 @@ import { useNetwork, ConnectionQuality } from '../context/NetworkContext';
 
 interface NetworkBannerProps {
     darkMode?: boolean;
+    network?: 'mainnet' | 'testnet';
 }
 
 /**
@@ -15,7 +16,7 @@ interface NetworkBannerProps {
  * - Smooth animations
  * - Dark mode support
  */
-export default function NetworkBanner({ darkMode = false }: NetworkBannerProps) {
+export default function NetworkBanner({ darkMode = false, network = 'mainnet' }: NetworkBannerProps) {
     const { status, showBanner, dismissBanner, checkConnection, isOffline, isWeak, getStatusMessage } = useNetwork();
     const [isChecking, setIsChecking] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
@@ -86,7 +87,20 @@ export default function NetworkBanner({ darkMode = false }: NetworkBannerProps) 
         );
     };
 
+    const isTestnet = network === 'testnet';
+    if (!showBanner && !isTestnet) return null;
+
     return (
+        <>
+        {isTestnet && (
+            <div className={`w-full py-1.5 px-4 mb-3 rounded-xl flex items-center justify-center text-[11px] sm:text-xs font-bold shadow-sm transition-all
+                ${darkMode ? 'bg-amber-500/20 text-amber-500 ring-1 ring-amber-500/30' : 'bg-amber-100 text-amber-700 ring-1 ring-amber-500/40'}
+            `}>
+                ⚠️ TESTNET MODE
+            </div>
+        )}
+
+        {showBanner && (
         <div
             className={`
                 fixed top-0 left-0 right-0 z-[9999]
@@ -162,5 +176,7 @@ export default function NetworkBanner({ darkMode = false }: NetworkBannerProps) 
                 </div>
             </div>
         </div>
+        )}
+        </>
     );
 }

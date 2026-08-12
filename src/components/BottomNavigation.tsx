@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wallet, SlidersHorizontal, ArrowLeftRight } from 'lucide-react';
+import { Wallet, SlidersHorizontal, ArrowLeftRight, Image } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 
@@ -13,13 +13,16 @@ interface BottomNavigationProps {
 const tabs = [
     { id: 'home', icon: Wallet, labelEn: 'Wallet', labelAr: 'المحفظة' },
     { id: 'activity', icon: ArrowLeftRight, labelEn: 'Activity', labelAr: 'النشاط' },
+    { id: 'collectibles', icon: Image, labelEn: 'NFTs', labelAr: 'مقتنياتي' },
     { id: 'settings', icon: SlidersHorizontal, labelEn: 'Settings', labelAr: 'الإعدادات' },
 ];
+
 
 export default function BottomNavigation({ darkMode, activeTab, setActiveTab, language }: BottomNavigationProps) {
     return (
         <div className="px-4 pb-3 pt-1.5">
-            <div className={cn("glass-card p-1.5 grid grid-cols-3 gap-1 relative")}>
+            <div className={cn("glass-card p-1.5 grid grid-cols-4 gap-1 relative")}>
+
                 {tabs.map(({ id, icon: Icon, labelEn, labelAr }) => {
                     const isActive = activeTab === id;
                     return (

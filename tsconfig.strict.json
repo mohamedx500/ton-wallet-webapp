@@ -1,0 +1,27 @@
+{
+    // Strict gate for the rewritten modules.
+    //
+    // The root `tsconfig.json` still has to compile the legacy JavaScript that is
+    // being ported (`allowJs`, no `noUncheckedIndexedAccess`), so turning the
+    // brief's full strictness on there would break the build before the port is
+    // finished. This config applies the target settings to the directories that
+    // have already been rewritten, so they cannot regress while the rest catches
+    // up.
+    //
+    // Every migrated directory is added to `include` as it lands. When the last
+    // one does, these options move into `tsconfig.json` and this file is deleted.
+    //
+    //     npm run type-check:strict
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "allowJs": false,
+        "noUncheckedIndexedAccess": true,
+        "exactOptionalPropertyTypes": true,
+        "noImplicitOverride": true,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true,
+        "noPropertyAccessFromIndexSignature": true,
+        "useUnknownInCatchVariables": true
+    },
+    "include": ["src/core/**/*", "src/assets/**/*", "src/config/application.ts", "src/config/strictSwapApplication.ts", "src/config/activeStrictSwapRuntime.ts", "src/wallet/**/*", "src/transfer/**/*", "src/tonconnect/**/*", "src/swap/**/*", "src/observability/**/*", "src/qr/**/*"]
+}

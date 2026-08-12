@@ -2,7 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, Copy, ExternalLink, ArrowDown, ArrowUp, Check, Eye, EyeOff, Loader2, Share2, Wallet, TriangleAlert, ChevronRight, ArrowLeftRight, XCircle, Lock, TrendingUp } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { TON_TOKENS } from '../services/SwapService';
+import { isValidAddress } from '../core/address';
+import { useStrictSwapRuntime } from '../StrictSwapProvider';
+import { useOptionalStrictSwap } from '../swap/StrictSwapReact';
+import {
+    ACTIVE_TON_ASSET,
+    createActiveQuoteIntent,
+    decodeStonfiAssets,
+    findActiveAssetBalance,
+    hasPositiveExactAmount,
+} from '../swap/application';
+import type {
+    ActiveSwapAsset,
+    PasswordConfirmedSwapResult,
+    SwapLifecycleStage,
+} from '../swap/application';
 import ModalShell from './ModalShell';
 
 interface BaseModalProps {
@@ -570,14 +584,13 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
     const [selectedAsset, setSelectedAsset] = useState<any>(null); // null = TON
     const [addressError, setAddressError] = useState('');
 
-    // Validate TON address (EQ/UQ format, 48 chars, or .ton domain)
+    // Validate TON address (Mainnet or Testnet, bounceable or non-bounceable)
     const isValidTonAddress = (addr: string): boolean => {
         if (!addr) return false;
         // .ton domain
         if (addr.toLowerCase().endsWith('.ton')) return true;
-        // Raw address: starts with EQ or UQ, 48 characters, base64
-        const tonAddrRegex = /^(EQ|UQ)[a-zA-Z0-9_-]{46}$/;
-        return tonAddrRegex.test(addr);
+        // robust address check
+        return isValidAddress(addr);
     };
 
     if (!isOpen) return null;
@@ -833,8 +846,22 @@ export function SendModal({ isOpen, onClose, darkMode, language, onSend, tokens 
 }
 
 // Receive Modal
-// Receive Modal
 export function ReceiveModal({ isOpen, onClose, darkMode, language, walletAddress, handleCopy, copied }: ReceiveModalProps) {
+    // Hooks must be declared before any conditional return.
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        if (!isOpen || !walletAddress || !canvasRef.current) return;
+        // Render QR code locally — no data is sent to any remote service.
+        void import('../qr/renderer').then(({ renderQrCode }) => {
+            if (!canvasRef.current) return;
+            renderQrCode(canvasRef.current, walletAddress, { size: 224, errorCorrectionLevel: 'M' }).catch(() => {
+                // Rendering failure is silent — the canvas stays blank rather than
+                // leaking the address to a fallback remote service.
+            });
+        });
+    }, [isOpen, walletAddress]);
+
     if (!isOpen) return null;
 
     const handleShare = async () => {
@@ -844,8 +871,8 @@ export function ReceiveModal({ isOpen, onClose, darkMode, language, walletAddres
                     title: 'My TON Wallet Address',
                     text: walletAddress,
                 });
-            } catch (err) {
-                console.error('Share failed:', err);
+            } catch {
+                // Share cancellation is expected; no logging needed.
             }
         } else {
             handleCopy();
@@ -875,22 +902,27 @@ export function ReceiveModal({ isOpen, onClose, darkMode, language, walletAddres
                     </button>
                 </div>
 
-                {/* QR Code Container */}
+                {/* QR Code Container — rendered locally, no remote service */}
                 <div className="flex flex-col items-center justify-center mb-8">
                     <div className="relative group">
                         {/* Card Effect */}
                         <div className={`absolute -inset-1 rounded-[26px] blur opacity-30 group-hover:opacity-50 transition duration-500 ${darkMode ? 'bg-gradient-to-r from-blue-600 to-purple-600' : 'bg-blue-200'}`}></div>
 
-                        <div className={`relative w-64 h-64 ${darkMode ? 'bg-white' : 'bg-white'} p-4 rounded-[24px] shadow-sm flex items-center justify-center`}>
-                            <img
-                                src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${walletAddress}`}
-                                alt="QR Code"
-                                className="w-full h-full object-contain rounded-xl"
+                        <div className="relative w-64 h-64 bg-white p-4 rounded-[24px] shadow-sm flex items-center justify-center">
+                            <canvas
+                                ref={canvasRef}
+                                width={224}
+                                height={224}
+                                className="rounded-xl"
+                                aria-label="QR Code"
                             />
-                            {/* Logo Overlay */}
+                            {/* TON logo overlay — inline SVG, no remote fetch */}
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                <div className="w-12 h-12 bg-white rounded-full p-1 shadow-md flex items-center justify-center overflow-hidden">
-                                    <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png" alt="TON" className="w-full h-full object-cover" />
+                                <div className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center">
+                                    <svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-7 h-7">
+                                        <path d="M28 0C12.536 0 0 12.536 0 28s12.536 28 28 28 28-12.536 28-28S43.464 0 28 0z" fill="#0098EA"/>
+                                        <path d="M37.477 15.5H18.523c-3.477 0-5.567 3.784-3.694 6.773l11.49 18.618a2.487 2.487 0 0 0 4.362 0l11.49-18.618c1.873-2.989-.217-6.773-3.694-6.773zM26.257 30.856l-2.33-3.781 6.597-9.575h3.056l-7.323 13.356zm3.486 0 7.323-13.356h-3.056l-7.323 13.356 3.056.001zm-9.5-13.356h3.056l7.323 13.356-3.056-.001-7.323-13.355z" fill="#fff"/>
+                                    </svg>
                                 </div>
                             </div>
                         </div>
@@ -986,332 +1018,247 @@ export function BuyModal({ isOpen, onClose, darkMode, language, walletAddress }:
 // Swap Modal - Real On-Chain Swap Interface
 interface SwapModalProps extends BaseModalProps {
     walletAddress: string;
+    walletType: string;
+    accountId: string | null;
+    activeAccount: unknown;
     tokens: any[];
-    onSwapInitiated?: (swapData: any) => void;
+    onTerminalRefresh: () => Promise<void>;
+    appNetwork?: string;
 }
 
-export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, tokens, onSwapInitiated }: SwapModalProps) {
-    const [fromToken, setFromToken] = useState('Gram');
-    const [toToken, setToToken] = useState('USDT');
+export function SwapModal({
+    isOpen,
+    onClose,
+    darkMode,
+    language,
+    walletAddress,
+    walletType,
+    accountId,
+    activeAccount,
+    tokens,
+    onTerminalRefresh,
+    appNetwork,
+}: SwapModalProps) {
+    const strictRuntime = useStrictSwapRuntime();
+    const strictSnapshot = useOptionalStrictSwap(
+        strictRuntime.status === 'ready' ? strictRuntime.ui : null,
+    );
+    const [fromToken, setFromToken] = useState<ActiveSwapAsset>(ACTIVE_TON_ASSET);
+    const [toToken, setToToken] = useState<ActiveSwapAsset | null>(null);
     const [amount, setAmount] = useState('');
-    const [selectedDex, setSelectedDex] = useState<'stonfi' | 'dedust'>('stonfi');
     const [showFromPicker, setShowFromPicker] = useState(false);
     const [showToPicker, setShowToPicker] = useState(false);
-    const [isLoadingQuote, setIsLoadingQuote] = useState(false);
-    const [quote, setQuote] = useState<any>(null);
     const [error, setError] = useState('');
     const [tokenSearch, setTokenSearch] = useState('');
+    const [showExecutionPassword, setShowExecutionPassword] = useState(false);
+    const [executionResult, setExecutionResult] = useState<PasswordConfirmedSwapResult | null>(null);
 
     // Dynamic token list from STON.fi API
-    const [availableTokens, setAvailableTokens] = useState<Array<{ symbol: string; name: string; icon: string; decimals: number; address: string }>>([]);
+    const [availableTokens, setAvailableTokens] = useState<readonly ActiveSwapAsset[]>([ACTIVE_TON_ASSET]);
     const [isLoadingTokens, setIsLoadingTokens] = useState(false);
+    const assetDiscoveryStarted = useRef(false);
     const [displayLimit, setDisplayLimit] = useState(50); // Show only 50 initially for performance
 
-    // Load available tokens from STON.fi when modal opens
+    // Load the STON.fi catalog and user tokens
     useEffect(() => {
-        if (isOpen && availableTokens.length === 0) {
-            loadAvailableTokens();
-        }
-    }, [isOpen]);
+        if (!isOpen || strictRuntime.status !== 'ready') return;
 
-    const loadAvailableTokens = async () => {
-        setIsLoadingTokens(true);
-        try {
-            console.log('[SwapModal] Loading tokens from STON.fi API...');
-            const response = await fetch('https://api.ston.fi/v1/assets');
+        // Extract tokens the user already holds
+        const walletAssets: ActiveSwapAsset[] = tokens
+            .filter(t => t.symbol !== 'Gram' && t.masterAddress)
+            .map(t => ({
+                contractAddress: t.masterAddress,
+                name: t.name || t.symbol,
+                symbol: t.symbol,
+                displaySymbol: t.symbol,
+                decimals: t.decimals,
+                imageUrl: t.icon
+            }));
 
-            if (response.ok) {
-                const data = await response.json();
+        const baseTokens = [ACTIVE_TON_ASSET, ...walletAssets];
 
-                if (data.asset_list && Array.isArray(data.asset_list)) {
-                    // Filter tokens - more inclusive to catch all verified tokens:
-                    // 1. Not blacklisted/deprecated
-                    // 2. Has image, symbol, and contract address
-                    // 3. Either has trading activity OR is a known token type (wton, jetton, etc)
-                    const processedTokens = data.asset_list
-                        .filter((a: any) =>
-                            !a.blacklisted &&
-                            !a.deprecated &&
-                            a.image_url &&
-                            a.symbol &&
-                            a.contract_address
-                        )
-                        .sort((a: any, b: any) => {
-                            // Sort by popularity_index (STON.fi's verified popularity metric)
-                            // Then by dex_usd_price as fallback
-                            const aPopularity = a.popularity_index || 0;
-                            const bPopularity = b.popularity_index || 0;
-                            if (aPopularity !== bPopularity) return bPopularity - aPopularity;
-                            return (b.dex_usd_price || 0) - (a.dex_usd_price || 0);
-                        })
-                        .slice(0, 1000) // Top 1000 tokens by popularity
-                        .map((asset: any) => ({
-                            symbol: asset.symbol || 'Unknown',
-                            name: asset.display_name || asset.symbol || 'Unknown',
-                            icon: asset.image_url || 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png',
-                            decimals: asset.decimals || 9,
-                            address: asset.contract_address,
-                        }));
-
-                    console.log('[SwapModal] Loaded', processedTokens.length, 'tokens');
-                    setAvailableTokens(processedTokens);
+        if (assetDiscoveryStarted.current) {
+            setAvailableTokens(prev => {
+                const map = new Map(prev.map(p => [p.contractAddress, p]));
+                for (const t of baseTokens) {
+                    if (!map.has(t.contractAddress)) {
+                        map.set(t.contractAddress, t);
+                    }
                 }
-            } else {
-                console.error('[SwapModal] Failed to load tokens:', response.status);
-                // Fallback to minimal list if API fails
-                setAvailableTokens([
-                    { symbol: 'Gram', name: 'Gram', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png', decimals: 9, address: 'native' },
-                    { symbol: 'USD₮', name: 'Tether USD', icon: 'https://asset.ston.fi/img/EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs/1a87edfee9a28b05578853952e5effb8cc30af1e0fb90043aa2ce19dce490849', decimals: 6, address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs' },
-                ]);
+                return Array.from(map.values());
+            });
+            return;
+        }
+
+        assetDiscoveryStarted.current = true;
+        setAvailableTokens(baseTokens);
+
+        // Load STON.fi catalog (even if app is on testnet, we load mainnet tokens for display/quoting)
+
+        setIsLoadingTokens(true);
+        void (async () => {
+            try {
+                const response = await fetch('https://api.ston.fi/v1/assets');
+                if (!response.ok) throw new Error('STON.fi asset discovery failed.');
+
+                const data: unknown = await response.json();
+                const processedTokens = decodeStonfiAssets(data);
+
+                setAvailableTokens((prev) => {
+                    const map = new Map(prev.map(p => [p.contractAddress, p]));
+                    for (const t of processedTokens) {
+                        if (!map.has(t.contractAddress)) {
+                            map.set(t.contractAddress, t);
+                        }
+                    }
+                    return Array.from(map.values());
+                });
+
+                setToToken((current) => current ?? processedTokens.find(
+                    (asset) => asset.symbol === 'USD₮' || asset.symbol === 'USDT',
+                ) ?? processedTokens.find((asset) => asset.contractAddress !== 'native') ?? null);
+            } catch {
+                // Keep base tokens
+            } finally {
+                setIsLoadingTokens(false);
             }
-        } catch (error) {
-            console.error('[SwapModal] Error loading tokens:', error);
-            // Fallback to minimal list if API fails
-            setAvailableTokens([
-                { symbol: 'Gram', name: 'Gram', icon: 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png', decimals: 9, address: 'native' },
-                { symbol: 'USD₮', name: 'Tether USD', icon: 'https://asset.ston.fi/img/EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs/1a87edfee9a28b05578853952e5effb8cc30af1e0fb90043aa2ce19dce490849', decimals: 6, address: 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs' },
-            ]);
-        } finally {
-            setIsLoadingTokens(false);
-        }
-    };
+        })();
+    }, [isOpen, strictRuntime, tokens, appNetwork]);
 
-    const dexProviders = [
-        { id: 'stonfi' as const, name: 'STON.fi' },
-        { id: 'dedust' as const, name: 'DeDust' },
-    ];
-
-    const getToken = (symbol: string) => {
-        const apiSymbol = symbol === 'Gram' ? 'TON' : symbol;
-        // First try to find in availableTokens (from API)
-        const token = availableTokens.find(t => t.symbol === symbol || t.symbol === apiSymbol);
-        if (token) {
-            return {
-                ...token,
-                symbol: symbol === 'Gram' ? 'Gram' : token.symbol,
-                name: symbol === 'Gram' ? 'Gram' : token.name,
-                icon: symbol === 'Gram' ? 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png' : token.icon
-            };
-        }
-
-        // Fallback to TON_TOKENS from SwapService
-        const fallbackToken = Object.values(TON_TOKENS).find(t => t.symbol === symbol || t.symbol === apiSymbol);
-        if (fallbackToken) {
-            return {
-                symbol: fallbackToken.symbol,
-                name: fallbackToken.name,
-                icon: fallbackToken.icon,
-                decimals: fallbackToken.decimals,
-                address: fallbackToken.address
-            };
-        }
-
-        return undefined;
-    };
-
-    const getBalance = (symbol: string) => {
-        const token = tokens.find(t => 
-            t.symbol === symbol || 
-            (symbol === 'USDT' && t.symbol === 'USD₮') || 
-            (symbol === 'USD₮' && t.symbol === 'USDT')
-        );
-        return token?.rawBalance || 0;
-    };
+    const getBalance = (asset: ActiveSwapAsset | null) =>
+        asset === null ? 0 : findActiveAssetBalance(asset, tokens);
 
     const handleSwapTokens = () => {
-        const temp = fromToken;
+        if (toToken === null) return;
+        const previousFrom = fromToken;
+        strictRuntime.status === 'ready' && strictRuntime.ui.invalidate();
         setFromToken(toToken);
-        setToToken(temp);
-        setQuote(null);
+        setToToken(previousFrom);
     };
 
-    // Fetch quote when amount changes - using the new SwapService
     const fetchQuote = async () => {
-        if (!amount || parseFloat(amount) <= 0 || fromToken === toToken) {
-            setQuote(null);
-            return;
-        }
+        if (
+            strictRuntime.status !== 'ready'
+            || toToken === null
+            || !walletAddress
+            || !hasPositiveExactAmount(amount, fromToken.decimals)
+        ) return;
 
-        setIsLoadingQuote(true);
         setError('');
-
+        setExecutionResult(null);
         try {
-            // Import the SwapService dynamically
-            const { swapService } = await import('../services/SwapService');
-
-            // Get the best quote from both DEXes (STON.fi and DeDust)
-            const result = await swapService.getBestQuote(fromToken, toToken, amount);
-
-            // Use the best quote
-            const bestQuote = result.bestQuote;
-
-            // Calculate rate for display
-            const inputNum = parseFloat(bestQuote.inputAmount);
-            const outputNum = parseFloat(bestQuote.outputAmount);
-            const rate = inputNum > 0 ? (outputNum / inputNum).toFixed(4) : '0';
-
-            setQuote({
-                provider: bestQuote.provider,
-                fromToken: bestQuote.fromToken,
-                toToken: bestQuote.toToken,
-                inputAmount: bestQuote.inputAmount,
-                outputAmount: bestQuote.outputAmount,
-                minOutputAmount: bestQuote.minOutputAmount,
-                priceImpact: bestQuote.priceImpact || '< 0.1%',
-                fee: bestQuote.fee || '~0.3%',
-                rate: `1 ${fromToken} ≈ ${rate} ${toToken}`,
-                isEstimate: bestQuote.isEstimate,
-                poolAddress: bestQuote.poolAddress,
-                allQuotes: result.allQuotes, // Store all quotes for comparison
-                rawData: bestQuote.rawData, // CRITICAL: Preserve API response data for swap building
-            });
-
-            // Update selected DEX to match best quote
-            setSelectedDex(bestQuote.provider);
-        } catch (err: any) {
-            console.warn('[SwapModal] Quote error, using fallback:', err);
-
-            // Fallback to approximate prices if SwapService fails
-            // Updated to current market rates (Jan 2026)
-            const fallbackPrices: Record<string, number> = {
-                TON: 1.85,   // ~$1.85 per TON
-                USDT: 1.0,
-                NOT: 0.0006,
-                DOGS: 0.00005,
-                CATI: 0.06,
-                STON: 0.40,
-                HMSTR: 0.003,
-                MAJOR: 0.13,
-                JETTON: 0.06,
-                REDO: 0.05,
-            };
-
-            const fromPrice = fallbackPrices[fromToken] || 1;
-            const toPrice = fallbackPrices[toToken] || 1;
-            const inputAmount = parseFloat(amount);
-            const outputAmount = (inputAmount * fromPrice / toPrice);
-            const minOutput = outputAmount * 0.99;
-            const toDecimals = getToken(toToken)?.decimals || 6;
-
-            setQuote({
-                provider: selectedDex,
-                fromToken,
-                toToken,
-                inputAmount: amount,
-                outputAmount: outputAmount.toFixed(toDecimals > 6 ? 4 : 2),
-                minOutputAmount: minOutput.toFixed(toDecimals > 6 ? 4 : 2),
-                priceImpact: '< 0.1%',
-                fee: '~0.3%',
-                rate: `1 ${fromToken} ≈ ${(fromPrice / toPrice).toFixed(4)} ${toToken}`,
-                isEstimate: true,
-            });
-        } finally {
-            setIsLoadingQuote(false);
+            await strictRuntime.ui.quote(createActiveQuoteIntent({
+                network: strictRuntime.network,
+                ownerAddress: walletAddress,
+                account: {
+                    type: walletType,
+                    address: walletAddress,
+                },
+                from: fromToken,
+                to: toToken,
+                amount,
+                slippageBps: 100,
+                correlationId: createQuoteCorrelationId(),
+            }));
+        } catch (quoteError) {
+            setError(quoteError instanceof Error ? quoteError.message : 'Unable to quote this swap.');
         }
     };
 
-    // Debounce quote fetching when amount/tokens change
     React.useEffect(() => {
+        if (strictRuntime.status !== 'ready') return;
+        strictRuntime.ui.invalidate();
+        if (!isOpen || toToken === null || !hasPositiveExactAmount(amount, fromToken.decimals)) return;
         const timer = setTimeout(() => {
-            if (amount && parseFloat(amount) > 0) {
-                fetchQuote();
-            }
+            void fetchQuote();
         }, 500);
         return () => clearTimeout(timer);
-    }, [amount, fromToken, toToken, selectedDex]);
+    }, [isOpen, amount, fromToken.contractAddress, toToken?.contractAddress, walletAddress, walletType, accountId]);
 
-    // Auto-refresh prices every 10 seconds
-    const [refreshCountdown, setRefreshCountdown] = React.useState(10);
+    React.useEffect(() => () => {
+        if (strictRuntime.status === 'ready') strictRuntime.ui.invalidate();
+    }, [strictRuntime]);
 
     React.useEffect(() => {
-        if (!isOpen || !amount || parseFloat(amount) <= 0) {
-            setRefreshCountdown(10);
-            return;
+        const stage = strictSnapshot?.lifecycle?.stage;
+        if (stage && stage !== 'preparing' && stage !== 'signing') {
+            setShowExecutionPassword(false);
         }
+    }, [strictSnapshot?.lifecycle?.stage]);
 
-        // Countdown timer
-        const countdownInterval = setInterval(() => {
-            setRefreshCountdown(prev => {
-                if (prev <= 1) {
-                    return 10; // Reset countdown
-                }
-                return prev - 1;
-            });
-        }, 1000);
-
-        // Refresh prices every 10 seconds
-        const refreshInterval = setInterval(() => {
-            if (amount && parseFloat(amount) > 0 && !isLoadingQuote) {
-                fetchQuote();
-            }
-        }, 10000);
-
-        return () => {
-            clearInterval(countdownInterval);
-            clearInterval(refreshInterval);
-        };
-    }, [isOpen, amount, fromToken, toToken, selectedDex]);
-
-    // Reset countdown when quote is manually fetched
-    const handleManualRefresh = () => {
-        setRefreshCountdown(10);
-        if (amount && parseFloat(amount) > 0) {
-            fetchQuote();
-        }
+    const createQuoteCorrelationId = () => {
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        return `swap_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
     };
 
     const handleMaxClick = () => {
         const balance = getBalance(fromToken);
-
-        // Calculate fee based on swap direction
-        let fee = 0;
-        if (fromToken === 'Gram') {
-            // TON -> Jetton swap: need to reserve gas (0.25 TON) + small buffer (0.05)
-            fee = 0.30; // Conservative estimate: 0.25 for swap + 0.05 buffer
-        } else if (toToken === 'Gram') {
-            // Jetton -> TON swap: gas is paid from balance after swap, so can use full jetton balance
-            fee = 0;
-        } else {
-            // Jetton -> Jetton swap: no TON deduction needed from jetton balance
-            fee = 0;
-        }
-
-        const max = Math.max(0, balance - fee);
-        setAmount(max.toString());
+        const gasReserve = fromToken.contractAddress === 'native' ? 0.30 : 0;
+        setAmount(Math.max(0, balance - gasReserve).toString());
     };
 
-    const handleSwap = () => {
-        if (!quote || !amount || parseFloat(amount) <= 0) return;
+    const handleClose = () => {
+        const stage = strictSnapshot?.lifecycle?.stage;
+        const isWaitingForDEX = strictSnapshot?.phase === 'executing' && stage && (stage === 'submitted' || stage === 'wallet-pending' || stage === 'wallet-confirmed' || stage === 'dex-pending');
+        if (strictSnapshot?.phase === 'executing' && !isWaitingForDEX) return;
+        if (strictRuntime.status === 'ready') strictRuntime.ui.invalidate();
+        setShowExecutionPassword(false);
+        setExecutionResult(null);
+        setError('');
+        onClose();
+    };
 
-        const balance = getBalance(fromToken);
-        if (parseFloat(amount) > balance) {
-            setError(language === 'ar' ? 'رصيد غير كافي' : 'Insufficient balance');
+    const handlePasswordClose = () => {
+        if (strictSnapshot?.phase === 'executing') return;
+        setShowExecutionPassword(false);
+        setError('');
+    };
+
+    const handleExecutionConfirm = async (password: string) => {
+        if (strictRuntime.status !== 'ready' || activeAccount === null) {
+            setError('No active wallet account is available for this swap.');
             return;
         }
 
-        // Trigger swap - this will open password modal for confirmation
-        if (onSwapInitiated) {
-            onSwapInitiated({
-                fromToken,
-                toToken,
-                amount,
-                minOutput: quote.minOutputAmount,
-                provider: selectedDex,
-                quote,
-            });
+        setError('');
+        try {
+            const result = await strictRuntime.ui.execute(activeAccount, password);
+            setExecutionResult(result);
+            setShowExecutionPassword(false);
+            if (
+                result.walletConfirmationState === 'confirmed'
+                && (result.state === 'succeeded' || result.state === 'failed')
+            ) {
+                await onTerminalRefresh();
+            }
+        } catch (executionError) {
+            setError(safeExecutionError(executionError));
         }
-        onClose();
     };
 
     if (!isOpen) return null;
 
-    const fromTokenData = getToken(fromToken);
-    const toTokenData = getToken(toToken);
+    const quote = strictSnapshot?.quote ?? null;
+    const lifecycle = strictSnapshot?.lifecycle ?? null;
+    const isLoadingQuote = strictSnapshot?.phase === 'quoting';
+    const isExecuting = strictSnapshot?.phase === 'executing';
+    const isWaitingForDEX = isExecuting && lifecycle !== null && (lifecycle.stage === 'submitted' || lifecycle.stage === 'wallet-pending' || lifecycle.stage === 'wallet-confirmed' || lifecycle.stage === 'dex-pending');
     const balance = getBalance(fromToken);
-    const hasInsufficientBalance = parseFloat(amount || '0') > balance;
+    const amountNumber = Number(amount);
+    const hasInsufficientBalance = Number.isFinite(amountNumber) && amountNumber > balance;
+    const strictSwapUnavailable = strictRuntime.status !== 'ready';
+    const executionDisabled = (
+        strictSwapUnavailable
+        || strictSnapshot?.executionAvailable !== true
+        || quote === null
+        || activeAccount === null
+        || hasInsufficientBalance
+        || isLoadingQuote
+        || (isExecuting && !isWaitingForDEX)
+    );
 
     return (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleClose}>
             <div className={cn("w-full max-w-sm rounded-3xl animate-scale-in shadow-2xl", darkMode ? "bg-[hsl(224,20%,8%)] ring-1 ring-white/5" : "bg-white/95 backdrop-blur-xl ring-1 ring-black/5")} onClick={(e) => e.stopPropagation()}>
 
                 {/* Header */}
@@ -1320,7 +1267,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                         <h3 className={cn("text-base font-bold", darkMode ? "text-white" : "text-gray-900")}>
                             {language === 'ar' ? 'تبديل' : 'Swap'}
                         </h3>
-                        <button onClick={onClose} className={cn("p-1.5 rounded-xl transition", darkMode ? "hover:bg-white/5 text-gray-500" : "hover:bg-gray-100 text-gray-400")}>
+                        <button onClick={handleClose} className={cn("p-1.5 rounded-xl transition", darkMode ? "hover:bg-white/5 text-gray-500" : "hover:bg-gray-100 text-gray-400")}>
                             <X size={18} />
                         </button>
                     </div>
@@ -1352,13 +1299,13 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                             >
                                 <div className="w-7 h-7 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
                                     <img
-                                        src={fromTokenData?.icon}
-                                        alt={fromToken}
+                                        src={fromToken.imageUrl}
+                                        alt={fromToken.symbol}
                                         className="w-full h-full object-cover"
                                         onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }}
                                     />
                                 </div>
-                                <span className={cn("font-bold text-sm", darkMode ? 'text-white' : 'text-gray-900')}>{fromToken}</span>
+                                <span className={cn("font-bold text-sm", darkMode ? 'text-white' : 'text-gray-900')}>{fromToken.symbol}</span>
                                 <ChevronRight size={14} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
                             </button>
                             <input
@@ -1399,22 +1346,22 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                             ) : (
                                 <div className="max-h-48 overflow-y-auto">
                                     {availableTokens
-                                        .filter(t => t.symbol !== toToken)
+                                        .filter(t => t.contractAddress !== toToken?.contractAddress)
                                         .filter(t => {
                                             if (!tokenSearch) return true;
                                             const search = tokenSearch.toLowerCase();
                                             return t.symbol.toLowerCase().includes(search) || t.name.toLowerCase().includes(search);
                                         })
-                                        .slice(0, tokenSearch ? 100 : displayLimit) // Show more when searching
+                                        .slice(0, tokenSearch ? 100 : displayLimit)
                                         .map((t) => (
                                             <button
-                                                key={t.address || t.symbol}
-                                                onClick={() => { setFromToken(t.symbol); setShowFromPicker(false); setQuote(null); setTokenSearch(''); }}
+                                                key={t.contractAddress}
+                                                onClick={() => { setFromToken(t); setShowFromPicker(false); setTokenSearch(''); }}
                                                 className={cn("w-full flex items-center gap-3 p-3 transition", darkMode ? "hover:bg-white/[0.03]" : "hover:bg-black/[0.02]")}
                                             >
                                                 <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
                                                     <img
-                                                        src={t.icon}
+                                                        src={t.imageUrl}
                                                         alt={t.symbol}
                                                         className="w-full h-full object-cover"
                                                         onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }}
@@ -1425,11 +1372,11 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                                     <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>{t.name}</span>
                                                 </div>
                                                 <span className={`text-sm ml-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                    {getBalance(t.symbol).toFixed(4)}
+                                                    {getBalance(t).toFixed(4)}
                                                 </span>
                                             </button>
                                         ))}
-                                    {availableTokens.filter(t => t.symbol !== toToken).filter(t => {
+                                    {availableTokens.filter(t => t.contractAddress !== toToken?.contractAddress).filter(t => {
                                         if (!tokenSearch) return true;
                                         const search = tokenSearch.toLowerCase();
                                         return t.symbol.toLowerCase().includes(search) || t.name.toLowerCase().includes(search);
@@ -1439,7 +1386,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                             </div>
                                         )}
                                     {/* Show More Button */}
-                                    {!tokenSearch && availableTokens.filter(t => t.symbol !== toToken).length > displayLimit && (
+                                    {!tokenSearch && availableTokens.filter(t => t.contractAddress !== toToken?.contractAddress).length > displayLimit && (
                                         <button
                                             onClick={() => setDisplayLimit(prev => prev + 50)}
                                             className={`w-full p-2 text-sm ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-gray-100'} transition`}
@@ -1479,13 +1426,13 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                             >
                                 <div className="w-7 h-7 rounded-full overflow-hidden flex items-center justify-center flex-shrink-0">
                                     <img
-                                        src={toTokenData?.icon}
-                                        alt={toToken}
+                                        src={toToken?.imageUrl}
+                                        alt={toToken?.symbol ?? ''}
                                         className="w-full h-full object-cover"
                                         onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }}
                                     />
                                 </div>
-                                <span className={cn("font-bold text-sm", darkMode ? 'text-white' : 'text-gray-900')}>{toToken}</span>
+                                <span className={cn("font-bold text-sm", darkMode ? 'text-white' : 'text-gray-900')}>{toToken?.symbol ?? 'Select'}</span>
                                 <ChevronRight size={14} className={darkMode ? 'text-gray-500' : 'text-gray-400'} />
                             </button>
                             <div className="flex-1 text-right">
@@ -1493,7 +1440,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                     <Loader2 size={20} className={`animate-spin ml-auto ${darkMode ? 'text-gray-500' : 'text-gray-400'}`} />
                                 ) : (
                                     <span className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                        {quote ? quote.outputAmount : '0'}
+                                        {quote ? quote.expectedOutAmount : '0'}
                                     </span>
                                 )}
                             </div>
@@ -1523,22 +1470,22 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                             ) : (
                                 <div className="max-h-48 overflow-y-auto">
                                     {availableTokens
-                                        .filter(t => t.symbol !== fromToken)
+                                        .filter(t => t.contractAddress !== fromToken.contractAddress)
                                         .filter(t => {
                                             if (!tokenSearch) return true;
                                             const search = tokenSearch.toLowerCase();
                                             return t.symbol.toLowerCase().includes(search) || t.name.toLowerCase().includes(search);
                                         })
-                                        .slice(0, tokenSearch ? 100 : displayLimit) // Show more when searching
+                                        .slice(0, tokenSearch ? 100 : displayLimit)
                                         .map((t) => (
                                             <button
-                                                key={t.address || t.symbol}
-                                                onClick={() => { setToToken(t.symbol); setShowToPicker(false); setQuote(null); setTokenSearch(''); }}
+                                                key={t.contractAddress}
+                                                onClick={() => { setToToken(t); setShowToPicker(false); setTokenSearch(''); }}
                                                 className={cn("w-full flex items-center gap-3 p-3 transition", darkMode ? "hover:bg-white/[0.03]" : "hover:bg-black/[0.02]")}
                                             >
                                                 <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
                                                     <img
-                                                        src={t.icon}
+                                                        src={t.imageUrl}
                                                         alt={t.symbol}
                                                         className="w-full h-full object-cover"
                                                         onError={(e) => { (e.target as HTMLImageElement).src = 'https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ton/info/logo.png'; }}
@@ -1550,7 +1497,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                                 </div>
                                             </button>
                                         ))}
-                                    {availableTokens.filter(t => t.symbol !== fromToken).filter(t => {
+                                    {availableTokens.filter(t => t.contractAddress !== fromToken.contractAddress).filter(t => {
                                         if (!tokenSearch) return true;
                                         const search = tokenSearch.toLowerCase();
                                         return t.symbol.toLowerCase().includes(search) || t.name.toLowerCase().includes(search);
@@ -1560,7 +1507,7 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                                             </div>
                                         )}
                                     {/* Show More Button */}
-                                    {!tokenSearch && availableTokens.filter(t => t.symbol !== fromToken).length > displayLimit && (
+                                    {!tokenSearch && availableTokens.filter(t => t.contractAddress !== fromToken.contractAddress).length > displayLimit && (
                                         <button
                                             onClick={() => setDisplayLimit(prev => prev + 50)}
                                             className={`w-full p-2 text-sm ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-gray-100'} transition`}
@@ -1573,57 +1520,30 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                         </div>
                     )}
 
-                    {/* Quote Info */}
+                    {/* Strict STON.fi Quote Info */}
                     {quote && !isLoadingQuote && (
                         <div className="glass-card p-3 mb-3">
-                            {/* Rate with refresh indicator */}
-                            <div className="flex justify-between items-center text-xs mb-1">
-                                <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>{language === 'ar' ? 'السعر' : 'Rate'}</span>
-                                <div className="flex items-center gap-2">
-                                    <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{quote.rate}</span>
-                                    <button
-                                        onClick={handleManualRefresh}
-                                        className={`p-1 rounded-full hover:bg-gray-700/50 transition ${isLoadingQuote ? 'animate-spin' : ''}`}
-                                        title={`${language === 'ar' ? 'تحديث' : 'Refresh'} (${refreshCountdown}s)`}
-                                    >
-                                        <ArrowLeftRight size={12} className={darkMode ? 'text-gray-400' : 'text-gray-500'} />
-                                    </button>
-                                </div>
+                            <div className="flex justify-between text-xs mb-1">
+                                <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>{language === 'ar' ? 'الناتج المتوقع' : 'Expected output'}</span>
+                                <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{quote.expectedOutAmount} {toToken?.symbol}</span>
                             </div>
                             <div className="flex justify-between text-xs mb-1">
                                 <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>{language === 'ar' ? 'الحد الأدنى' : 'Min. received'}</span>
-                                <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{quote.minOutputAmount} {toToken}</span>
+                                <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{quote.minOutAmount} {toToken?.symbol}</span>
                             </div>
                             <div className="flex justify-between text-xs mb-1">
-                                <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>{language === 'ar' ? 'المنصة' : 'Provider'}</span>
-                                <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{selectedDex === 'stonfi' ? 'STON.fi' : 'DeDust'}</span>
+                                <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>{language === 'ar' ? 'الانزلاق' : 'Slippage'}</span>
+                                <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{quote.slippageBps / 100}%</span>
                             </div>
-                            {/* Live update indicator */}
-                            <div className="flex items-center justify-center gap-1 mt-2 pt-2 border-t border-gray-700/50">
-                                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-                                <span className={`text-[10px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                    {language === 'ar' ? `تحديث تلقائي خلال ${refreshCountdown} ثانية` : `Auto-update in ${refreshCountdown}s`}
-                                </span>
+                            <div className="flex justify-between text-xs">
+                                <span className={darkMode ? 'text-gray-500' : 'text-gray-400'}>{language === 'ar' ? 'المنصة' : 'Provider'}</span>
+                                <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>STON.fi</span>
                             </div>
                         </div>
                     )}
 
-                    {/* DEX Selection */}
-                    <div className={cn("glass-card p-1 flex gap-1 mb-3")}>
-                        {dexProviders.map((dex) => (
-                            <button
-                                key={dex.id}
-                                onClick={() => { setSelectedDex(dex.id); setQuote(null); }}
-                                className={cn(
-                                    "flex-1 py-2 rounded-xl text-xs font-bold transition-all",
-                                    selectedDex === dex.id
-                                        ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-sm"
-                                        : darkMode ? "text-gray-500 hover:text-gray-300" : "text-gray-500 hover:text-gray-700"
-                                )}
-                            >
-                                {dex.name}
-                            </button>
-                        ))}
+                    <div className={cn("glass-card p-2.5 mb-3 text-center text-xs font-semibold", darkMode ? "text-blue-300" : "text-blue-700")}>
+                        STON.fi secure quotes only
                     </div>
 
                     {/* Error Message */}
@@ -1633,29 +1553,155 @@ export function SwapModal({ isOpen, onClose, darkMode, language, walletAddress, 
                         </div>
                     )}
 
-                    {/* Swap Button */}
+                    {lifecycle !== null && (
+                        <div className={cn(
+                            "p-2.5 mb-3 rounded-xl text-xs text-center font-semibold",
+                            lifecycle.stage === 'succeeded'
+                                ? "bg-green-500/10 text-green-500"
+                                : lifecycle.stage === 'failed' || lifecycle.stage === 'cancelled'
+                                    ? "bg-red-500/10 text-red-500"
+                                    : darkMode ? "bg-white/5 text-blue-300" : "bg-blue-50 text-blue-700",
+                        )}>
+                            {lifecycleMessage(lifecycle.stage, language)}
+                            {lifecycle.explorerUrl !== null && (
+                                <a
+                                    href={lifecycle.explorerUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="ml-1 underline"
+                                >
+                                    {language === 'ar' ? 'عرض' : 'View'}
+                                </a>
+                            )}
+                        </div>
+                    )}
+
+                    {executionResult !== null && executionResult.state !== 'succeeded' && (
+                        <div className="p-2.5 mb-3 rounded-xl bg-amber-500/10 text-amber-600 text-xs text-center font-semibold">
+                            {executionResultMessage(executionResult, language)}
+                        </div>
+                    )}
+
                     <button
-                        onClick={handleSwap}
-                        disabled={!quote || !amount || parseFloat(amount) <= 0 || hasInsufficientBalance || isLoadingQuote}
-                        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 active:scale-[0.98]"
+                        type="button"
+                        disabled={executionDisabled}
+                        onClick={() => {
+                            if (isWaitingForDEX) {
+                                handleClose();
+                            } else {
+                                setError('');
+                                setShowExecutionPassword(true);
+                            }
+                        }}
+                        className={cn(
+                            "w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20",
+                            executionDisabled
+                                ? "opacity-50 cursor-not-allowed"
+                                : "hover:from-blue-600 hover:to-blue-700 active:scale-[0.98]",
+                        )}
                     >
-                        {isLoadingQuote ? (
+                        {isWaitingForDEX ? (
+                            language === 'ar' ? 'إغلاق' : 'Close'
+                        ) : isLoadingQuote || isExecuting ? (
                             <Loader2 size={18} className="animate-spin" />
+                        ) : strictSwapUnavailable ? (
+                            language === 'ar' ? 'التبديل الآمن غير متاح' : 'Secure swap unavailable'
                         ) : hasInsufficientBalance ? (
                             language === 'ar' ? 'رصيد غير كافي' : 'Insufficient Balance'
+                        ) : quote === null ? (
+                            language === 'ar' ? 'في انتظار عرض آمن' : 'Waiting for secure quote'
                         ) : (
                             <>
-                                <ArrowLeftRight size={16} />
-                                {language === 'ar' ? 'تبديل' : 'Swap'}
+                                <Lock size={16} />
+                                {language === 'ar' ? 'تأكيد وتنفيذ' : 'Confirm and execute'}
                             </>
                         )}
                     </button>
                 </div>
             </div>
+            <PasswordPromptModal
+                isOpen={showExecutionPassword}
+                onClose={handlePasswordClose}
+                onConfirm={handleExecutionConfirm}
+                darkMode={darkMode}
+                language={language}
+                isLoading={isExecuting}
+                error={error}
+            />
         </div >
     );
 }
 
+function lifecycleMessage(stage: SwapLifecycleStage, language: string): string {
+    const arabic = language === 'ar';
+    switch (stage) {
+        case 'preparing':
+            return arabic ? 'جارٍ التحقق من المسار...' : 'Validating approved route...';
+        case 'signing':
+            return arabic ? 'جارٍ توقيع المعاملة...' : 'Signing securely...';
+        case 'submitted':
+            return arabic ? 'تم الإرسال إلى شبكة TON.' : 'Submitted to TON.';
+        case 'wallet-pending':
+            return arabic ? 'في انتظار تأكيد المحفظة.' : 'Waiting for wallet confirmation.';
+        case 'wallet-confirmed':
+            return arabic ? 'تم تأكيد المحفظة، جارٍ التحقق من STON.fi.' : 'Wallet confirmed; verifying STON.fi outcome.';
+        case 'dex-pending':
+            return arabic ? 'في انتظار نتيجة STON.fi.' : 'Waiting for STON.fi outcome.';
+        case 'succeeded':
+            return arabic ? 'اكتملت المبادلة على STON.fi.' : 'Swap completed on STON.fi.';
+        case 'failed':
+            return arabic ? 'فشلت المبادلة أو تم رد الأموال.' : 'Swap failed or funds were refunded.';
+        case 'unknown':
+            return arabic ? 'النتيجة غير مؤكدة. لا تعِد الإرسال.' : 'Outcome is unknown. Do not resubmit.';
+        case 'cancelled':
+            return arabic ? 'تم إلغاء التأكيد.' : 'Confirmation was cancelled.';
+    }
+}
+
+function executionResultMessage(
+    result: PasswordConfirmedSwapResult,
+    language: string,
+): string {
+    if (result.walletConfirmationState === 'pending' || result.walletConfirmationState === 'unknown') {
+        return language === 'ar'
+            ? 'لم يتم تأكيد معاملة المحفظة بعد. لا تعِد الإرسال.'
+            : 'Wallet transaction is not confirmed yet. Do not resubmit.';
+    }
+    if (result.state === 'pending') {
+        return language === 'ar'
+            ? 'نتيجة STON.fi ما زالت معلقة. لا تعِد الإرسال.'
+            : 'STON.fi outcome is still pending. Do not resubmit.';
+    }
+    if (result.state === 'unknown') {
+        return language === 'ar'
+            ? 'تعذر تحديد نتيجة STON.fi. لا تعِد الإرسال.'
+            : 'STON.fi outcome could not be determined. Do not resubmit.';
+    }
+    return language === 'ar'
+        ? 'فشلت المبادلة أو تم رد الأموال.'
+        : 'Swap failed or funds were refunded.';
+}
+
+function safeExecutionError(error: unknown): string {
+    if (typeof error === 'object' && error !== null) {
+        const errObj = error as Record<string, any>;
+        const code = errObj.code;
+        const causeMsg = errObj.cause?.message || (errObj.cause ? String(errObj.cause) : '');
+        const detail = causeMsg ? `: ${causeMsg}` : '';
+        if (code === 'MNEMONIC_DECRYPTION_FAILED') return 'The wallet could not be unlocked with that password.';
+        if (code === 'UNSUPPORTED_HIGHLOAD_V3') return 'Highload Wallet V3 swaps are not active in this safe execution path.';
+        if (code === 'CONFIRMATION_CANCELLED') return 'Swap confirmation was cancelled.';
+        if (code === 'SUBMISSION_AMBIGUOUS') return `Submission error${detail}. Do not resubmit; check recovery status.`;
+        if (typeof code === 'string' && code.length > 0) {
+            const msg = typeof errObj.message === 'string' ? errObj.message : '';
+            return `Secure swap failed (${code}). ${msg}${detail}`;
+        }
+        if (typeof errObj.message === 'string') {
+            return `Secure swap failed. ${errObj.message}${detail}`;
+        }
+    }
+    return 'Secure swap execution failed.';
+}
 
 // Backup Modal
 interface BackupModalProps extends BaseModalProps {
